@@ -24,6 +24,21 @@
     --danger: #e05555;
     --success: #55b87a;
   }
+  html[data-theme="colorblind"] {
+    --syn: #0072B2;
+    --nonsyn: #D55E00;
+    --intergenic: #F0E442;
+  }
+  html[data-theme="colorblind"] .type-intergenic { color: #1a1d27; }
+  .cb-toggle {
+    position: fixed; top: 10px; right: 16px; z-index: 999;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 5px; padding: 4px 10px;
+    cursor: pointer; font-size: 11px; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .cb-toggle:hover { border-color: var(--accent); color: var(--text); }
+  .cb-toggle.active { border-color: var(--accent); color: var(--accent); }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
@@ -287,6 +302,7 @@
       <div class="subtitle">Interactive VCF browser for within-host variant exploration. Load VCFs and reference will be autodetected, or upload a GenBank file.</div>
     </div>
   </div>
+  <button class="cb-toggle" id="cb-toggle" title="Toggle colorblind-friendly palette">&#128065; Colorblind Mode</button>
 
   <!-- Reference bar -->
   <div class="ref-bar" id="ref-bar">
@@ -595,6 +611,70 @@ var MUT_CATEGORIES = [
   'T>A', 'T>C', 'T>G',
 ];
 var MUT_GROUP_COLORS = { A: '#5b8def', C: '#E62223', G: '#97D54C', T: '#CBCACB' };
+
+// ============================================================
+// COLORBLIND-SAFE PALETTES (Okabe-Ito / Wong)
+// ============================================================
+var DEFAULT_TYPE_COLORS = { syn: '#527F91', nonsyn: '#a0392d', intergenic: '#888899', unknown: '#888899' };
+var CB_TYPE_COLORS = { syn: '#0072B2', nonsyn: '#D55E00', intergenic: '#F0E442', unknown: '#999999' };
+
+var DEFAULT_MUT_GROUP_COLORS = { A: '#5b8def', C: '#E62223', G: '#97D54C', T: '#CBCACB' };
+var CB_MUT_GROUP_COLORS = { A: '#0072B2', C: '#D55E00', G: '#009E73', T: '#CC79A7' };
+
+var DEFAULT_GENE_PALETTE = GENE_PALETTE.slice();
+var CB_GENE_PALETTE = [
+  '#0072B2','#D55E00','#009E73','#F0E442','#CC79A7',
+  '#56B4E9','#E69F00','#000000','#648FFF','#DC267F',
+  '#785EF0','#FE6100','#FFB000','#22D1EE','#8B4513',
+];
+
+var DEFAULT_TYPE_BAR_COLORS = { all: '#5b8def', syn: '#527F91', nonsyn: '#a0392d', intergenic: '#888899' };
+var CB_TYPE_BAR_COLORS = { all: '#56B4E9', syn: '#0072B2', nonsyn: '#D55E00', intergenic: '#F0E442' };
+
+var colorblindMode = false;
+
+function applyColorblindPalette(enabled) {
+  colorblindMode = enabled;
+  document.documentElement.setAttribute('data-theme', enabled ? 'colorblind' : '');
+  // Swap JS color objects
+  TYPE_COLORS.syn = enabled ? CB_TYPE_COLORS.syn : DEFAULT_TYPE_COLORS.syn;
+  TYPE_COLORS.nonsyn = enabled ? CB_TYPE_COLORS.nonsyn : DEFAULT_TYPE_COLORS.nonsyn;
+  TYPE_COLORS.intergenic = enabled ? CB_TYPE_COLORS.intergenic : DEFAULT_TYPE_COLORS.intergenic;
+  TYPE_COLORS.unknown = enabled ? CB_TYPE_COLORS.unknown : DEFAULT_TYPE_COLORS.unknown;
+  MUT_GROUP_COLORS.A = enabled ? CB_MUT_GROUP_COLORS.A : DEFAULT_MUT_GROUP_COLORS.A;
+  MUT_GROUP_COLORS.C = enabled ? CB_MUT_GROUP_COLORS.C : DEFAULT_MUT_GROUP_COLORS.C;
+  MUT_GROUP_COLORS.G = enabled ? CB_MUT_GROUP_COLORS.G : DEFAULT_MUT_GROUP_COLORS.G;
+  MUT_GROUP_COLORS.T = enabled ? CB_MUT_GROUP_COLORS.T : DEFAULT_MUT_GROUP_COLORS.T;
+  var srcPalette = enabled ? CB_GENE_PALETTE : DEFAULT_GENE_PALETTE;
+  for (var i = 0; i < GENE_PALETTE.length; i++) {
+    GENE_PALETTE[i] = srcPalette[i % srcPalette.length];
+  }
+  // Update gene colors already stored in state
+  if (state.genes && state.genes.length) {
+    for (var j = 0; j < state.genes.length; j++) {
+      state.genes[j].color = GENE_PALETTE[j % GENE_PALETTE.length];
+    }
+  }
+  // Toggle button style
+  var btn = document.getElementById('cb-toggle');
+  if (btn) { enabled ? btn.classList.add('active') : btn.classList.remove('active'); }
+}
+
+function toggleColorblindMode() {
+  var enabled = !colorblindMode;
+  applyColorblindPalette(enabled);
+  try { localStorage.setItem('variscient-colorblind', enabled ? '1' : ''); } catch(e) {}
+  // Re-render all visible plots
+  updatePlot();
+  updateHistogram();
+  if (activeTab === 'analyses') {
+    updateVPS();
+    updateSFS();
+    updateMutSpectrum();
+  } else {
+    analysesNeedUpdate = true;
+  }
+}
 
 // ============================================================
 // SAMPLE NAME — everything before first '.'
@@ -1764,8 +1844,8 @@ function updateVPS() {
     median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
-  var typeBarColors = { all: '#5b8def', syn: '#527F91', nonsyn: '#a0392d', intergenic: '#888899' };
-  var barColor = typeBarColors[vpsTypeFilter] || '#5b8def';
+  var typeBarColors = colorblindMode ? CB_TYPE_BAR_COLORS : DEFAULT_TYPE_BAR_COLORS;
+  var barColor = typeBarColors[vpsTypeFilter] || typeBarColors.all;
 
   var trace = {
     x: values, type: 'histogram',
@@ -1916,8 +1996,8 @@ function updateSFS() {
   var normC = rawSum > 0 ? totalObs / rawSum : 0;
   var expected = rawExpected.map(function(e) { return e * normC; });
 
-  var typeBarColors = { all: '#5b8def', syn: '#527F91', nonsyn: '#a0392d', intergenic: '#888899' };
-  var barColor = typeBarColors[sfsTypeFilter] || '#5b8def';
+  var typeBarColors = colorblindMode ? CB_TYPE_BAR_COLORS : DEFAULT_TYPE_BAR_COLORS;
+  var barColor = typeBarColors[sfsTypeFilter] || typeBarColors.all;
 
   var traces = [
     {
@@ -2026,6 +2106,14 @@ function updateMutSpectrum() {
 // ============================================================
 // INIT
 // ============================================================
+// Colorblind mode: restore from localStorage and wire toggle
+try {
+  if (localStorage.getItem('variscient-colorblind') === '1') {
+    applyColorblindPalette(true);
+  }
+} catch(e) {}
+document.getElementById('cb-toggle').addEventListener('click', toggleColorblindMode);
+
 initTable();
 initEmptyPlot();
 updateHistogram();
