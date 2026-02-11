@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variscient</title>
+<link href="https://unpkg.com/tabulator-tables@5.6.1/dist/css/tabulator_midnight.min.css" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script src="https://unpkg.com/tabulator-tables@5.6.1/dist/js/tabulator.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242736;
+    --border: #2e3142;
+    --text: #e0e0e8;
+    --text-dim: #888899;
+    --accent: #5b8def;
+    --accent-hover: #7aa5ff;
+    --syn: #527F91;
+    --nonsyn: #a0392d;
+    --intergenic: #888899;
+    --unknown: #888899;
+    --danger: #e05555;
+    --success: #55b87a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  .container { max-width: 1600px; margin: 0 auto; padding: 16px 24px; }
+
+  .header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header .subtitle { color: var(--text-dim); font-size: 13px; }
+
+  /* Reference bar */
+  .ref-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  }
+  .ref-bar .ref-group { display: flex; flex-direction: column; gap: 4px; }
+  .ref-bar label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .ref-bar input[type="text"] {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 6px 10px;
+    font-size: 13px; outline: none; width: 200px;
+  }
+  .ref-bar input[type="text"]:focus { border-color: var(--accent); }
+  .ref-bar .ref-file-label {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 5px; padding: 6px 12px;
+    font-size: 12px; cursor: pointer; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .ref-bar .ref-file-label:hover { border-color: var(--accent); color: var(--text); }
+  .ref-bar .ref-file-label input { display: none; }
+  .ref-info {
+    font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 8px;
+    flex: 1; min-width: 200px;
+  }
+  .ref-info .ref-name { color: var(--accent); font-weight: 600; }
+  .ref-info .ref-genes { color: var(--text-dim); }
+  .ref-clear {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11px;
+  }
+  .ref-clear:hover { border-color: var(--danger); color: var(--danger); }
+  .ref-status { font-size: 12px; color: var(--text-dim); font-style: italic; }
+
+  .btn-sm {
+    background: var(--accent); border: none; color: #fff;
+    border-radius: 5px; padding: 6px 14px; cursor: pointer; font-size: 12px;
+    transition: all 0.15s;
+  }
+  .btn-sm:hover { background: var(--accent-hover); }
+  .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 32px; text-align: center; cursor: pointer;
+    transition: all 0.2s; margin-bottom: 16px; position: relative;
+  }
+  .dropzone.dragover { border-color: var(--accent); background: rgba(91,141,239,0.06); }
+  .dropzone p { color: var(--text-dim); font-size: 14px; }
+  .dropzone .icon { font-size: 28px; margin-bottom: 8px; color: var(--text-dim); }
+  .dropzone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+  .drop-status {
+    margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .drop-status .count { font-size: 13px; color: var(--text); }
+  .drop-status .clear-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11px;
+  }
+  .drop-status .clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  .summary-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; text-align: center;
+  }
+  .card .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+
+  .filter-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-group label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .filter-group select, .filter-group input[type="number"] {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 6px 10px;
+    font-size: 13px; outline: none;
+  }
+  .filter-group select:focus, .filter-group input:focus { border-color: var(--accent); }
+  .filter-group input[type="range"] { accent-color: var(--accent); width: 120px; }
+  .range-wrapper { display: flex; align-items: center; gap: 6px; }
+  .range-val { font-size: 12px; color: var(--text-dim); min-width: 36px; text-align: center; }
+  .checkbox-label {
+    display: flex; align-items: center; gap: 6px; font-size: 13px;
+    cursor: pointer; padding: 6px 0;
+  }
+  .checkbox-label input { accent-color: var(--accent); }
+  .toggle-group { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+  .toggle-group button {
+    background: var(--surface2); border: none; color: var(--text-dim);
+    padding: 5px 12px; font-size: 12px; cursor: pointer; border-right: 1px solid var(--border);
+    transition: all 0.15s;
+  }
+  .toggle-group button:last-child { border-right: none; }
+  .toggle-group button:hover { color: var(--text); }
+  .toggle-group button.active { background: var(--accent); color: #fff; }
+  .filter-reset {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 12px;
+    align-self: flex-end;
+  }
+  .filter-reset:hover { border-color: var(--accent); color: var(--text); }
+
+  .plot-container {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px; margin-bottom: 16px;
+    min-height: 400px;
+  }
+  #genome-plot { width: 100%; height: 420px; }
+
+  .table-container {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; margin-bottom: 16px;
+  }
+  .table-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+  }
+  .table-header h3 { font-size: 14px; font-weight: 600; }
+  .table-header-left { display: flex; align-items: center; gap: 12px; }
+  .table-count { font-size: 12px; color: var(--text-dim); }
+  .back-btn {
+    background: var(--accent); border: none; color: #fff;
+    border-radius: 5px; padding: 4px 12px; cursor: pointer; font-size: 12px;
+    display: none;
+  }
+  .back-btn:hover { background: var(--accent-hover); }
+  #variant-table { font-size: 13px; }
+
+  .tabulator { background-color: var(--surface) !important; border: none !important; }
+  .tabulator .tabulator-header { background-color: var(--surface2) !important; border-bottom: 1px solid var(--border) !important; }
+  .tabulator .tabulator-header .tabulator-col { background-color: var(--surface2) !important; border-right: 1px solid var(--border) !important; }
+  .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 8px !important; }
+  .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .tabulator .tabulator-header .tabulator-header-filter input { background: var(--bg) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 3px !important; padding: 3px 6px !important; font-size: 11px !important; }
+  .tabulator .tabulator-tableHolder .tabulator-table .tabulator-row { border-bottom: 1px solid var(--border) !important; }
+  .tabulator .tabulator-row.tabulator-row-even { background-color: var(--surface) !important; }
+  .tabulator .tabulator-row.tabulator-row-odd { background-color: rgba(36,39,54,0.5) !important; }
+  .tabulator .tabulator-row:hover { background-color: rgba(91,141,239,0.08) !important; }
+  .tabulator .tabulator-cell { border-right: 1px solid var(--border) !important; padding: 5px 8px !important; }
+  .tabulator .tabulator-footer { background-color: var(--surface2) !important; border-top: 1px solid var(--border) !important; }
+  .tabulator .tabulator-footer .tabulator-page { background: var(--surface) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 3px !important; margin: 0 2px !important; }
+  .tabulator .tabulator-footer .tabulator-page.active { background: var(--accent) !important; border-color: var(--accent) !important; color: #fff !important; }
+
+  .export-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 7px 16px;
+    cursor: pointer; font-size: 12px; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 24px; max-width: 700px; width: 92%;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .modal-title {
+    font-size: 16px; font-weight: 600; margin-bottom: 16px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-close { background: none; border: none; color: var(--text-dim); font-size: 22px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--text); }
+  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-field { padding: 8px 0; }
+  .modal-field .mf-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+  .modal-field .mf-value { font-size: 14px; font-weight: 500; word-break: break-all; }
+  .modal-section-title {
+    font-size: 13px; font-weight: 600; color: var(--accent);
+    margin-top: 16px; margin-bottom: 8px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .sample-list { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  .sample-list th { text-align: left; padding: 5px 8px; font-size: 10px; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+  .sample-list td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .sample-list tr:hover td { background: rgba(91,141,239,0.06); }
+
+  .type-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: #fff; }
+  .type-syn { background: var(--syn); }
+  .type-nonsyn { background: var(--nonsyn); }
+  .type-intergenic { background: var(--intergenic); }
+  .type-unknown { background: var(--unknown); }
+  .flipped-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: var(--danger); color: #fff; }
+  .pass-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .pass-yes { background: var(--success); color: #fff; }
+  .pass-no { background: var(--danger); color: #fff; }
+
+  @media (max-width: 900px) {
+    .filter-bar { flex-direction: column; }
+    .summary-row { grid-template-columns: repeat(3, 1fr); }
+    .modal-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div>
+      <h1>Variscient</h1>
+      <div class="subtitle">Interactive VCF browser for within-host variant exploration. Load VCFs and reference will be autodetected, or upload a GenBank file.</div>
+    </div>
+  </div>
+
+  <!-- Reference bar -->
+  <div class="ref-bar" id="ref-bar">
+    <div class="ref-group">
+      <label>NCBI Accession</label>
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="ref-accession" placeholder="e.g. NC_045512.2">
+        <button class="btn-sm" id="ref-fetch-btn">Fetch</button>
+      </div>
+    </div>
+    <div class="ref-group">
+      <label>Or upload GenBank</label>
+      <label class="ref-file-label">
+        Browse .gb file
+        <input type="file" id="ref-file-input" accept=".gb,.gbk,.genbank,.gbff">
+      </label>
+    </div>
+    <div class="ref-info" id="ref-info">
+      <span class="ref-status" id="ref-status">No reference loaded &mdash; gene positions will be unknown</span>
+    </div>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="dropzone" id="dropzone">
+    <div class="icon">&#128451;</div>
+    <p>Drag &amp; drop VCF files here, or click to browse</p>
+    <p style="font-size:12px; margin-top:4px; color:var(--text-dim);">Supports original, annotated, and cleaned VCF formats</p>
+    <input type="file" id="file-input" multiple accept=".vcf,.vcf.gz">
+    <div class="drop-status" id="drop-status" style="display:none;">
+      <span class="count" id="file-count-label">0 files loaded</span>
+      <button class="clear-btn" id="clear-all-btn">Clear All</button>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="summary-row">
+    <div class="card"><div class="label">Unique Variants</div><div class="value" id="sum-total">0</div></div>
+    <div class="card"><div class="label">Synonymous</div><div class="value" id="sum-syn" style="color:var(--syn)">0</div></div>
+    <div class="card"><div class="label">Nonsynonymous</div><div class="value" id="sum-nonsyn" style="color:var(--nonsyn)">0</div></div>
+    <div class="card"><div class="label">Intergenic</div><div class="value" id="sum-intergenic" style="color:var(--intergenic)">0</div></div>
+    <div class="card"><div class="label">Mean AF</div><div class="value" id="sum-af">-</div></div>
+    <div class="card"><div class="label">Samples Loaded</div><div class="value" id="sum-files">0</div></div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label>AF Range</label>
+      <div class="range-wrapper">
+        <span class="range-val" id="af-min-val">0.00</span>
+        <input type="range" id="af-min" min="0" max="1" step="0.01" value="0">
+        <span>-</span>
+        <input type="range" id="af-max" min="0" max="1" step="0.01" value="1">
+        <span class="range-val" id="af-max-val">1.00</span>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Min DP</label>
+      <input type="number" id="dp-min" value="0" min="0" step="10" style="width:80px;">
+    </div>
+    <div class="filter-group">
+      <label>Gene</label>
+      <select id="filter-gene"><option value="">All</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Variant Type</label>
+      <select id="filter-type">
+        <option value="">All</option>
+        <option value="syn">Synonymous</option>
+        <option value="nonsyn">Nonsynonymous</option>
+        <option value="intergenic">Intergenic</option>
+        <option value="unknown">Unknown</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>&nbsp;</label>
+      <label class="checkbox-label"><input type="checkbox" id="filter-isnv"> iSNV only (AF&lt;0.5)</label>
+    </div>
+    <div class="filter-group">
+      <label>&nbsp;</label>
+      <label class="checkbox-label"><input type="checkbox" id="filter-pass"> PASS only</label>
+    </div>
+    <div class="filter-group">
+      <label>Fixed Variants (AF&ge;0.5)</label>
+      <div class="toggle-group" id="fixed-toggle">
+        <button class="active" data-value="keep">Keep</button>
+        <button data-value="flip">Flip</button>
+        <button data-value="mask">Mask</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Min Sample Count</label>
+      <input type="number" id="count-min" value="0" min="0" step="1" style="width:80px;">
+    </div>
+    <button class="filter-reset" id="filter-reset">Reset Filters</button>
+  </div>
+
+  <div class="plot-container"><div id="genome-plot"></div></div>
+
+  <div class="export-bar">
+    <button class="btn" id="export-csv">&#x2913; Export CSV</button>
+    <button class="btn" id="export-tsv">&#x2913; Export TSV</button>
+    <button class="btn" id="export-png">&#x1F4F7; Plot PNG</button>
+    <button class="btn" id="export-svg">&#x1F4F7; Plot SVG</button>
+  </div>
+
+  <div class="table-container">
+    <div class="table-header">
+      <div class="table-header-left">
+        <h3 id="table-title">Variant Table</h3>
+        <button class="back-btn" id="back-btn">&larr; Back to all variants</button>
+      </div>
+      <span class="table-count" id="table-count">0 variants</span>
+    </div>
+    <div id="variant-table"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Variant Details</span>
+      <button class="modal-close" id="modal-close">&times;</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const GENE_PALETTE = [
+  '#4a90a4','#6a5acd','#2e8b57','#b8860b','#cd5c5c',
+  '#4682b4','#8b668b','#d2691e','#5f9ea0','#bc8f8f',
+  '#6b8e23','#9370db','#20b2aa','#db7093','#778899',
+];
+const TYPE_COLORS = {
+  syn: '#527F91', nonsyn: '#a0392d', intergenic: '#888899',
+  unknown: '#888899',
+};
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  // Reference
+  genes: [],           // [{ name, start, end, color, product }]
+  genomeLength: 0,     // from GenBank LOCUS line
+  refName: '',         // organism / definition
+  refAccession: '',
+  refSequence: '',     // nucleotide sequence from ORIGIN
+
+  // VCF data
+  fileNames: [],
+  variants: [],
+  filtered: [],
+  aggregated: [],
+  table: null,
+  tableMode: 'aggregated',
+  selectedVariantKey: null,
+  hasCleaned: false,
+  fixedMode: 'keep', // 'keep', 'flip', 'mask'
+};
+
+// ============================================================
+// SAMPLE NAME — everything before first '.'
+// ============================================================
+function sampleName(fileName) {
+  const dot = fileName.indexOf('.');
+  return dot > 0 ? fileName.substring(0, dot) : fileName;
+}
+
+// ============================================================
+// GENBANK PARSER
+// ============================================================
+function parseGenBank(text) {
+  const lines = text.split('\n');
+  let genomeLength = 0;
+  let organism = '';
+  let definition = '';
+  let accession = '';
+  const cdsFeatures = [];
+  let sequence = '';
+
+  // Parse LOCUS line for length
+  const locusMatch = lines[0] && lines[0].match(/LOCUS\s+\S+\s+(\d+)\s+bp/);
+  if (locusMatch) genomeLength = parseInt(locusMatch[1], 10);
+
+  // Parse header fields
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('DEFINITION')) {
+      definition = line.substring(12).trim().replace(/\.$/, '');
+    } else if (line.startsWith('ACCESSION')) {
+      accession = line.substring(12).trim().split(/\s+/)[0];
+    } else if (line.startsWith('  ORGANISM')) {
+      organism = line.substring(12).trim();
+    } else if (line.startsWith('FEATURES')) {
+      break;
+    }
+  }
+
+  // Parse FEATURES section — extract CDS entries
+  let inFeatures = false;
+  let currentFeature = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('FEATURES')) { inFeatures = true; continue; }
+    if (line.startsWith('ORIGIN') || line.startsWith('//')) {
+      if (currentFeature && currentFeature.type === 'CDS') cdsFeatures.push(currentFeature);
+      break;
+    }
+    if (!inFeatures) continue;
+
+    // New feature line: type starts at col 5, location at col 21
+    const featureMatch = line.match(/^     (\S+)\s+(.+)$/);
+    if (featureMatch) {
+      if (currentFeature && currentFeature.type === 'CDS') cdsFeatures.push(currentFeature);
+      currentFeature = {
+        type: featureMatch[1],
+        locationStr: featureMatch[2].trim(),
+        qualifiers: {},
+      };
+      continue;
+    }
+
+    // Qualifier or continuation
+    if (currentFeature && line.startsWith('                     /')) {
+      const qualMatch = line.trim().match(/^\/(\w+)="?([^"]*)"?$/);
+      if (qualMatch) {
+        currentFeature.qualifiers[qualMatch[1]] = qualMatch[2];
+      }
+    }
+  }
+
+  // Parse ORIGIN section for sequence
+  let inOrigin = false;
+  const seqParts = [];
+  for (const line of lines) {
+    if (line.startsWith('ORIGIN')) { inOrigin = true; continue; }
+    if (line.startsWith('//')) break;
+    if (inOrigin) {
+      seqParts.push(line.replace(/[\s\d]/g, ''));
+    }
+  }
+  sequence = seqParts.join('').toUpperCase();
+
+  // Convert CDS features to genes array
+  const genes = [];
+  const seenGenes = new Set();
+  for (const feat of cdsFeatures) {
+    const geneName = feat.qualifiers.gene || feat.qualifiers.product || 'unknown';
+    // Skip duplicate gene names (e.g. V protein, C protein share gene with P)
+    // Keep the first (usually the main CDS)
+    if (seenGenes.has(geneName)) continue;
+    seenGenes.add(geneName);
+
+    const coords = parseGBLocation(feat.locationStr);
+    if (!coords) continue;
+
+    genes.push({
+      name: geneName,
+      start: coords.start,
+      end: coords.end,
+      product: feat.qualifiers.product || geneName,
+      color: GENE_PALETTE[genes.length % GENE_PALETTE.length],
+    });
+  }
+
+  // Sort genes by start position
+  genes.sort((a, b) => a.start - b.start);
+
+  return {
+    genes,
+    genomeLength: genomeLength || (sequence.length) || 0,
+    organism,
+    definition,
+    accession,
+    sequence,
+  };
+}
+
+function parseGBLocation(locStr) {
+  // Handle complement(...), join(...), simple start..end
+  // We extract the overall min start and max end
+  const numbers = [];
+  const numMatches = locStr.matchAll(/(\d+)/g);
+  for (const m of numMatches) numbers.push(parseInt(m[1], 10));
+  if (numbers.length < 2) return null;
+  return { start: Math.min(...numbers), end: Math.max(...numbers) };
+}
+
+// ============================================================
+// CODON TABLE + TRANSLATION
+// ============================================================
+const CODON_TABLE = {
+  'TTT':'F','TTC':'F','TTA':'L','TTG':'L','CTT':'L','CTC':'L','CTA':'L','CTG':'L',
+  'ATT':'I','ATC':'I','ATA':'I','ATG':'M','GTT':'V','GTC':'V','GTA':'V','GTG':'V',
+  'TCT':'S','TCC':'S','TCA':'S','TCG':'S','CCT':'P','CCC':'P','CCA':'P','CCG':'P',
+  'ACT':'T','ACC':'T','ACA':'T','ACG':'T','GCT':'A','GCC':'A','GCA':'A','GCG':'A',
+  'TAT':'Y','TAC':'Y','TAA':'*','TAG':'*','CAT':'H','CAC':'H','CAA':'Q','CAG':'Q',
+  'AAT':'N','AAC':'N','AAA':'K','AAG':'K','GAT':'D','GAC':'D','GAA':'E','GAG':'E',
+  'TGT':'C','TGC':'C','TGA':'*','TGG':'W','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
+  'AGT':'S','AGC':'S','AGA':'R','AGG':'R','GGT':'G','GGC':'G','GGA':'G','GGG':'G',
+};
+
+function translateCodon(codon) {
+  return CODON_TABLE[codon.toUpperCase()] || '?';
+}
+
+// ============================================================
+// ANNOTATE VARIANT using reference sequence + gene coords
+// ============================================================
+function annotateVariant(pos, ref, alt, genes, sequence) {
+  // pos is 1-based
+  if (!sequence || sequence.length === 0) return { gene: classifyGeneByPos(pos), aaChange: null, type: 'unknown' };
+
+  const gene = findGeneForPos(pos, genes);
+  if (!gene) return { gene: 'intergenic', aaChange: 'intergenic', type: 'intergenic' };
+
+  // Only annotate single-base substitutions
+  if (ref.length !== 1 || alt.length !== 1) {
+    return { gene: gene.name, aaChange: null, type: 'unknown' };
+  }
+
+  // Calculate codon position within the CDS
+  const posInCDS = pos - gene.start; // 0-based offset from CDS start
+  const codonIndex = Math.floor(posInCDS / 3);
+  const posInCodon = posInCDS % 3;
+  const codonStart = gene.start + (codonIndex * 3); // 1-based genome position
+
+  // Extract reference codon (convert to 0-based for sequence indexing)
+  if (codonStart - 1 < 0 || codonStart + 2 > sequence.length) {
+    return { gene: gene.name, aaChange: null, type: 'unknown' };
+  }
+  const refCodon = sequence.substring(codonStart - 1, codonStart + 2);
+  const altCodon = refCodon.substring(0, posInCodon) + alt + refCodon.substring(posInCodon + 1);
+
+  const refAA = translateCodon(refCodon);
+  const altAA = translateCodon(altCodon);
+  const aaPos = codonIndex + 1;
+
+  const aaChange = `${refAA}${aaPos}${altAA}`;
+
+  if (refAA === altAA) {
+    return { gene: gene.name, aaChange: aaChange + '(syn)', type: 'syn' };
+  } else {
+    return { gene: gene.name, aaChange, type: 'nonsyn' };
+  }
+}
+
+function findGeneForPos(pos, genes) {
+  for (const g of genes) {
+    if (pos >= g.start && pos <= g.end) return g;
+  }
+  return null;
+}
+
+function classifyGeneByPos(pos) {
+  for (const g of state.genes) {
+    if (pos >= g.start && pos <= g.end) return g.name;
+  }
+  return 'intergenic';
+}
+
+// ============================================================
+// REFERENCE LOADING
+// ============================================================
+function loadReference(gbText) {
+  const ref = parseGenBank(gbText);
+  state.genes = ref.genes;
+  state.genomeLength = ref.genomeLength;
+  state.refName = ref.organism || ref.definition;
+  state.refAccession = ref.accession;
+  state.refSequence = ref.sequence;
+
+  updateRefUI();
+  updateGeneFilter();
+
+  // Re-annotate any already-loaded variants that lack annotation
+  if (state.variants.length > 0) {
+    reannotateVariants();
+    applyFilters();
+  }
+
+  plotInitialized = false;
+  updatePlot();
+}
+
+function reannotateVariants() {
+  for (const v of state.variants) {
+    if (v._hasVCFAnnotation) continue; // keep original VCF annotation
+    const ann = annotateVariant(v.pos, v.ref, v.alt, state.genes, state.refSequence);
+    v.gene = ann.gene;
+    v.aaChange = ann.aaChange;
+    v.type = ann.type;
+  }
+}
+
+function updateRefUI() {
+  const el = document.getElementById('ref-status');
+  if (state.genes.length > 0) {
+    const geneNames = state.genes.map(g => g.name).join(', ');
+    el.innerHTML = `<span class="ref-name">${state.refName || state.refAccession}</span>` +
+      ` &mdash; ${state.genomeLength.toLocaleString()} bp, ${state.genes.length} genes: ` +
+      `<span class="ref-genes">${geneNames}</span>` +
+      ` <button class="ref-clear" id="ref-clear-btn">Clear</button>`;
+    document.getElementById('ref-clear-btn').addEventListener('click', clearReference);
+  } else {
+    el.innerHTML = 'No reference loaded &mdash; gene positions will be unknown';
+  }
+}
+
+function clearReference() {
+  state.genes = [];
+  state.genomeLength = 0;
+  state.refName = '';
+  state.refAccession = '';
+  state.refSequence = '';
+  updateRefUI();
+  updateGeneFilter();
+  // Re-classify variants without reference
+  for (const v of state.variants) {
+    if (v._hasVCFAnnotation) continue;
+    v.gene = 'intergenic';
+    v.aaChange = null;
+    v.type = 'unknown';
+  }
+  plotInitialized = false;
+  applyFilters();
+}
+
+function updateGeneFilter() {
+  const sel = document.getElementById('filter-gene');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  for (const g of state.genes) {
+    sel.innerHTML += `<option value="${g.name}">${g.name}</option>`;
+  }
+  sel.innerHTML += '<option value="intergenic">intergenic</option>';
+  sel.value = current;
+}
+
+// Reference file input
+document.getElementById('ref-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => loadReference(ev.target.result);
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// NCBI fetch
+document.getElementById('ref-fetch-btn').addEventListener('click', fetchNCBIReference);
+document.getElementById('ref-accession').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') fetchNCBIReference();
+});
+
+async function fetchNCBIReference() {
+  const acc = document.getElementById('ref-accession').value.trim();
+  if (!acc) return;
+  const btn = document.getElementById('ref-fetch-btn');
+  const statusEl = document.getElementById('ref-status');
+  btn.disabled = true;
+  btn.textContent = 'Fetching...';
+  statusEl.textContent = `Fetching ${acc} from NCBI...`;
+
+  try {
+    const url = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=${encodeURIComponent(acc)}&rettype=gb&retmode=text`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    if (!text.startsWith('LOCUS')) throw new Error('Response is not a valid GenBank record');
+    loadReference(text);
+  } catch (err) {
+    statusEl.textContent = `Failed to fetch ${acc}: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Fetch';
+  }
+}
+
+// ============================================================
+// VCF PARSER
+// ============================================================
+function parseINFO(infoStr) {
+  const info = {};
+  if (!infoStr || infoStr === '.') return info;
+  for (const p of infoStr.split(';')) {
+    const eq = p.indexOf('=');
+    if (eq === -1) info[p] = true;
+    else info[p.substring(0, eq)] = p.substring(eq + 1);
+  }
+  return info;
+}
+
+function parseAnnotation(ann) {
+  if (!ann) return { gene: null, aaChange: null, type: 'unknown' };
+  const s = String(ann);
+  if (s === 'intergenic') return { gene: 'intergenic', aaChange: 'intergenic', type: 'intergenic' };
+  let cleaned = s;
+  if (s.includes('(MNV)')) cleaned = cleaned.replace('(MNV)', '');
+  const isSyn = s.includes('(syn)');
+  if (isSyn) cleaned = cleaned.replace('(syn)', '');
+  let type = isSyn ? 'syn' : 'nonsyn';
+  const ci = cleaned.indexOf(':');
+  if (ci === -1) return { gene: cleaned, aaChange: cleaned, type };
+  let aaChange = cleaned.substring(ci + 1);
+  if (aaChange.startsWith('p.')) aaChange = aaChange.substring(2);
+  return { gene: cleaned.substring(0, ci), aaChange, type };
+}
+
+function parseVCF(text, fileName) {
+  const lines = text.split('\n');
+  const variants = [];
+  let hasANN = false, hasCleaned = false;
+
+  for (const line of lines) {
+    if (!line.startsWith('#')) break;
+    if (line.includes('ID=ANN')) hasANN = true;
+    if (line.includes('ID=FLIPPED') || line.includes('ID=PVAL_CORR')) hasCleaned = true;
+  }
+
+  const sample = sampleName(fileName);
+
+  for (const line of lines) {
+    if (line.startsWith('#') || line.trim() === '') continue;
+    const cols = line.split('\t');
+    if (cols.length < 8) continue;
+
+    const pos = parseInt(cols[1], 10);
+    const ref = cols[3], alt = cols[4];
+    const qual = parseFloat(cols[5]);
+    const filter = cols[6];
+    const info = parseINFO(cols[7]);
+
+    const dp = info.DP ? parseInt(info.DP, 10) : null;
+    const af = info.AF ? parseFloat(info.AF) : null;
+    const sb = info.SB ? parseInt(info.SB, 10) : null;
+    const dp4 = info.DP4 || null;
+
+    let gene, aaChange, type, hasVCFAnnotation = false;
+    if (hasANN && info.ANN) {
+      const parsed = parseAnnotation(info.ANN);
+      gene = parsed.gene; aaChange = parsed.aaChange; type = parsed.type;
+      hasVCFAnnotation = true;
+    } else if (state.genes.length > 0 && state.refSequence) {
+      const ann = annotateVariant(pos, ref, alt, state.genes, state.refSequence);
+      gene = ann.gene; aaChange = ann.aaChange; type = ann.type;
+    } else {
+      gene = classifyGeneByPos(pos);
+      aaChange = null;
+      type = 'unknown';
+    }
+
+    const flipped = info.FLIPPED === true || info.FLIPPED === 'true' || info.FLIPPED === '1';
+    const pval = info.PVAL != null ? parseFloat(info.PVAL) : null;
+    const pvalCorr = info.PVAL_CORR != null ? parseFloat(info.PVAL_CORR) : null;
+    const passBinom = info.PASS_BINOM === true || info.PASS_BINOM === 'true' || info.PASS_BINOM === '1';
+
+    // Detect cleaned fields from data if header detection missed them
+    if (!hasCleaned && (info.PVAL_CORR != null || info.FLIPPED != null || info.PASS_BINOM != null)) {
+      hasCleaned = true;
+    }
+
+    variants.push({
+      file: sample, pos, ref, alt, qual, filter,
+      dp, af, sb, dp4,
+      gene, aaChange, type,
+      flipped, pval, pvalCorr, passBinom,
+      hasCleaned,
+      _hasVCFAnnotation: hasVCFAnnotation,
+    });
+  }
+
+  // Detect reference accession from CHROM column of first data line
+  let detectedRef = null;
+  for (const line of lines) {
+    if (line.startsWith('#') || line.trim() === '') continue;
+    const chrom = line.split('\t')[0];
+    if (chrom) {
+      // Try to extract accession pattern like NC_001498.1 from chrom name
+      const accMatch = chrom.match(/([A-Z]{1,2}_\d+\.\d+)/);
+      if (accMatch) detectedRef = accMatch[1];
+      else detectedRef = chrom; // use full chrom name as fallback
+    }
+    break;
+  }
+
+  return { variants, hasCleaned, detectedRef };
+}
+
+// ============================================================
+// AGGREGATION
+// ============================================================
+function variantKey(v) { return `${v.pos}_${v.ref}_${v.alt}`; }
+
+function aggregateVariants(filtered) {
+  const map = new Map();
+  for (const v of filtered) {
+    const key = variantKey(v);
+    if (!map.has(key)) {
+      map.set(key, { key, pos: v.pos, ref: v.ref, alt: v.alt,
+        gene: v.gene, aaChange: v.aaChange, type: v.type, samples: [] });
+    }
+    const agg = map.get(key);
+    agg.samples.push(v);
+    if (v.aaChange && !agg.aaChange) { agg.aaChange = v.aaChange; agg.gene = v.gene; agg.type = v.type; }
+    if (v.type !== 'unknown' && agg.type === 'unknown') { agg.type = v.type; agg.gene = v.gene; }
+  }
+  const result = [];
+  for (const agg of map.values()) {
+    const afs = agg.samples.filter(s => s.af != null).map(s => s.af);
+    agg.count = agg.samples.length;
+    agg.meanAF = afs.length ? afs.reduce((a, b) => a + b, 0) / afs.length : null;
+    agg.minAF = afs.length ? Math.min(...afs) : null;
+    agg.maxAF = afs.length ? Math.max(...afs) : null;
+    result.push(agg);
+  }
+  return result;
+}
+
+// ============================================================
+// FILE HANDLING
+// ============================================================
+function addFiles(fileList) {
+  let pending = 0;
+  let firstDetectedRef = null;
+  for (const file of fileList) {
+    if (state.fileNames.includes(file.name)) continue;
+    state.fileNames.push(file.name);
+    pending++;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = parseVCF(e.target.result, file.name);
+      state.variants.push(...result.variants);
+      if (result.hasCleaned) state.hasCleaned = true;
+      if (result.detectedRef && !firstDetectedRef) firstDetectedRef = result.detectedRef;
+      pending--;
+      if (pending === 0) {
+        // Auto-fetch reference if none loaded and we detected an accession
+        if (firstDetectedRef && state.genes.length === 0 && !state._autoFetching) {
+          autoFetchReference(firstDetectedRef);
+        }
+        applyFilters(); updateDropStatus();
+      }
+    };
+    reader.readAsText(file);
+  }
+  updateDropStatus();
+}
+
+async function autoFetchReference(accession) {
+  state._autoFetching = true;
+  const statusEl = document.getElementById('ref-status');
+  const accInput = document.getElementById('ref-accession');
+  accInput.value = accession;
+  statusEl.textContent = `Auto-detected reference ${accession}, fetching from NCBI...`;
+
+  try {
+    const url = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=${encodeURIComponent(accession)}&rettype=gb&retmode=text`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    if (!text.startsWith('LOCUS')) throw new Error('Response is not a valid GenBank record');
+    loadReference(text);
+  } catch (err) {
+    statusEl.textContent = `Auto-fetch failed for ${accession}: ${err.message}. You can manually enter an accession or upload a GenBank file.`;
+  } finally {
+    state._autoFetching = false;
+  }
+}
+
+function clearAllFiles() {
+  state.fileNames = []; state.variants = []; state.filtered = [];
+  state.aggregated = []; state.hasCleaned = false;
+  state.tableMode = 'aggregated'; state.selectedVariantKey = null;
+  applyFilters(); updateDropStatus();
+}
+
+function updateDropStatus() {
+  const n = state.fileNames.length;
+  const status = document.getElementById('drop-status');
+  if (n === 0) { status.style.display = 'none'; }
+  else {
+    status.style.display = 'flex';
+    document.getElementById('file-count-label').textContent = `${n} file${n !== 1 ? 's' : ''} loaded`;
+  }
+  document.getElementById('sum-files').textContent = n;
+}
+
+// Drop zone events
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', (e) => { if (e.target.files.length) addFiles(e.target.files); e.target.value = ''; });
+document.getElementById('clear-all-btn').addEventListener('click', (e) => { e.stopPropagation(); clearAllFiles(); });
+
+// ============================================================
+// FILTERS
+// ============================================================
+const afMinEl = document.getElementById('af-min');
+const afMaxEl = document.getElementById('af-max');
+const afMinVal = document.getElementById('af-min-val');
+const afMaxVal = document.getElementById('af-max-val');
+const dpMinEl = document.getElementById('dp-min');
+const filterGene = document.getElementById('filter-gene');
+const filterType = document.getElementById('filter-type');
+const filterIsnv = document.getElementById('filter-isnv');
+const filterPass = document.getElementById('filter-pass');
+const countMinEl = document.getElementById('count-min');
+
+function getFilters() {
+  return {
+    afMin: parseFloat(afMinEl.value), afMax: parseFloat(afMaxEl.value),
+    dpMin: parseInt(dpMinEl.value, 10) || 0,
+    gene: filterGene.value, type: filterType.value,
+    isnvOnly: filterIsnv.checked, passOnly: filterPass.checked,
+    countMin: parseInt(countMinEl.value, 10) || 0,
+    fixedMode: state.fixedMode,
+  };
+}
+
+function flipAaChange(aaChange) {
+  if (!aaChange || aaChange === 'intergenic') return aaChange;
+  let suffix = '';
+  let core = aaChange;
+  const synMatch = core.match(/\(syn\)$/);
+  if (synMatch) { suffix = '(syn)'; core = core.replace(/\(syn\)$/, ''); }
+  // Parse pattern: AminoAcid(s) + position + AminoAcid(s), e.g. E628K → K628E
+  const match = core.match(/^([A-Z*]+)(\d+)([A-Z*]+)$/);
+  if (!match) return aaChange;
+  return `${match[3]}${match[2]}${match[1]}${suffix}`;
+}
+
+function applyFilters() {
+  const f = getFilters();
+
+  // First, apply fixed variant handling (flip/mask) then standard filters
+  let working = state.variants;
+  if (f.fixedMode === 'mask') {
+    working = working.filter(v => v.af === null || v.af < 0.5);
+  } else if (f.fixedMode === 'flip') {
+    working = working.map(v => {
+      if (v.af !== null && v.af >= 0.5) {
+        // Swap ref/alt, invert AF, and flip the amino acid annotation
+        return { ...v, ref: v.alt, alt: v.ref, af: 1 - v.af, aaChange: flipAaChange(v.aaChange), _flippedByToggle: true };
+      }
+      return v;
+    });
+  }
+
+  state.filtered = working.filter(v => {
+    if (v.af !== null && (v.af < f.afMin || v.af > f.afMax)) return false;
+    if (v.dp !== null && v.dp < f.dpMin) return false;
+    if (f.gene && v.gene !== f.gene) return false;
+    if (f.type && v.type !== f.type) return false;
+    if (f.isnvOnly && (v.af === null || v.af >= 0.5)) return false;
+    if (f.passOnly && v.filter !== 'PASS') return false;
+    return true;
+  });
+  state.aggregated = aggregateVariants(state.filtered);
+  if (f.countMin > 0) state.aggregated = state.aggregated.filter(a => a.count >= f.countMin);
+  updateSummary(); updatePlot(); updateTable();
+}
+
+afMinEl.addEventListener('input', () => { afMinVal.textContent = parseFloat(afMinEl.value).toFixed(2); applyFilters(); });
+afMaxEl.addEventListener('input', () => { afMaxVal.textContent = parseFloat(afMaxEl.value).toFixed(2); applyFilters(); });
+dpMinEl.addEventListener('change', applyFilters);
+filterGene.addEventListener('change', applyFilters);
+filterType.addEventListener('change', applyFilters);
+filterIsnv.addEventListener('change', applyFilters);
+filterPass.addEventListener('change', applyFilters);
+countMinEl.addEventListener('change', applyFilters);
+
+// Fixed variant toggle
+const fixedToggle = document.getElementById('fixed-toggle');
+fixedToggle.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  fixedToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.fixedMode = btn.dataset.value;
+  applyFilters();
+});
+
+document.getElementById('filter-reset').addEventListener('click', () => {
+  afMinEl.value = 0; afMaxEl.value = 1;
+  afMinVal.textContent = '0.00'; afMaxVal.textContent = '1.00';
+  dpMinEl.value = 0; filterGene.value = ''; filterType.value = '';
+  filterIsnv.checked = false; filterPass.checked = false;
+  countMinEl.value = 0;
+  state.fixedMode = 'keep';
+  fixedToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  fixedToggle.querySelector('[data-value="keep"]').classList.add('active');
+  state.tableMode = 'aggregated'; state.selectedVariantKey = null;
+  applyFilters();
+});
+
+// ============================================================
+// SUMMARY
+// ============================================================
+function updateSummary() {
+  const d = state.aggregated;
+  document.getElementById('sum-total').textContent = d.length;
+  document.getElementById('sum-syn').textContent = d.filter(v => v.type === 'syn').length;
+  document.getElementById('sum-nonsyn').textContent = d.filter(v => v.type === 'nonsyn').length;
+  document.getElementById('sum-intergenic').textContent = d.filter(v => v.type === 'intergenic').length;
+  const afs = state.filtered.filter(v => v.af !== null).map(v => v.af);
+  document.getElementById('sum-af').textContent = afs.length ? (afs.reduce((a,b) => a+b, 0) / afs.length).toFixed(4) : '-';
+}
+
+// ============================================================
+// GENOME PLOT
+// ============================================================
+function buildGeneShapes() {
+  return state.genes.map(g => ({
+    type: 'rect', xref: 'x', yref: 'paper',
+    x0: g.start, x1: g.end, y0: -0.12, y1: -0.04,
+    fillcolor: g.color, opacity: 0.6, line: { width: 0 },
+  }));
+}
+function buildGeneAnnotations() {
+  return state.genes.map(g => ({
+    x: (g.start + g.end) / 2, y: -0.08, xref: 'x', yref: 'paper',
+    text: g.name, showarrow: false, font: { size: 10, color: '#ccc' },
+  }));
+}
+
+function getGenomeRange() {
+  if (state.genomeLength > 0) return [1, state.genomeLength];
+  if (state.genes.length > 0) return [1, Math.max(...state.genes.map(g => g.end)) * 1.05];
+  if (state.aggregated.length > 0) return [1, Math.max(...state.aggregated.map(v => v.pos)) * 1.05];
+  return [1, 10000];
+}
+
+let plotInitialized = false;
+
+function updatePlot() {
+  const d = state.aggregated;
+  if (d.length === 0 && !plotInitialized) { initEmptyPlot(); return; }
+
+  const groups = {};
+  for (const type of ['syn', 'nonsyn', 'intergenic', 'unknown'])
+    groups[type] = { x: [], y: [], text: [], keys: [], sizes: [] };
+
+  const maxCount = Math.max(1, ...d.map(v => v.count));
+  d.forEach(v => {
+    const t = v.type;
+    if (!groups[t]) groups[t] = { x: [], y: [], text: [], keys: [], sizes: [] };
+    groups[t].x.push(v.pos);
+    groups[t].y.push(v.count);
+    groups[t].keys.push(v.key);
+    groups[t].text.push(
+      `Pos: ${v.pos} ${v.ref}>${v.alt}<br>Gene: ${v.gene}<br>` +
+      (v.aaChange ? `${v.aaChange}<br>` : '') +
+      `Samples: ${v.count}<br>Mean AF: ${v.meanAF != null ? v.meanAF.toFixed(4) : 'N/A'}`
+    );
+    groups[t].sizes.push(Math.max(6, 6 + (v.count / maxCount) * 14));
+  });
+
+  const typeNames = { syn: 'Synonymous', nonsyn: 'Nonsynonymous', intergenic: 'Intergenic', unknown: 'Unknown' };
+  const traces = [];
+  for (const [type, g] of Object.entries(groups)) {
+    if (g.x.length === 0) continue;
+    traces.push({
+      x: g.x, y: g.y, text: g.text, customdata: g.keys,
+      type: 'scatter', mode: 'markers', name: typeNames[type] || type,
+      marker: { color: TYPE_COLORS[type], size: g.sizes, opacity: 0.8,
+        line: { width: 0.5, color: 'rgba(255,255,255,0.3)' } },
+      hoverinfo: 'text',
+    });
+  }
+
+  const yMax = Math.max(1, ...d.map(v => v.count));
+  const xRange = getGenomeRange();
+
+  const layout = {
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e0e0e8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
+    xaxis: { title: 'Genome Position', range: xRange, gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
+    yaxis: { title: 'Sample Count', range: [-0.5, yMax * 1.1], gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)', dtick: yMax <= 10 ? 1 : undefined },
+    margin: { t: 20, b: 70, l: 60, r: 20 },
+    shapes: buildGeneShapes(), annotations: buildGeneAnnotations(),
+    legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', bgcolor: 'rgba(0,0,0,0)', font: { size: 11 } },
+    hovermode: 'closest',
+  };
+  const config = { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['select2d', 'lasso2d'], displaylogo: false };
+
+  if (!plotInitialized) {
+    Plotly.newPlot('genome-plot', traces, layout, config);
+    plotInitialized = true;
+    document.getElementById('genome-plot').on('plotly_click', onPlotClick);
+  } else {
+    Plotly.react('genome-plot', traces, layout, config);
+  }
+}
+
+function initEmptyPlot() {
+  const xRange = getGenomeRange();
+  const layout = {
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e0e0e8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
+    xaxis: { title: 'Genome Position', range: xRange, gridcolor: 'rgba(255,255,255,0.05)' },
+    yaxis: { title: 'Sample Count', range: [-0.5, 10], gridcolor: 'rgba(255,255,255,0.05)' },
+    margin: { t: 20, b: 70, l: 60, r: 20 },
+    shapes: buildGeneShapes(),
+    annotations: [
+      ...buildGeneAnnotations(),
+      { x: (xRange[0] + xRange[1]) / 2, y: 5, xref: 'x', yref: 'y',
+        text: 'Drop VCF files above to visualize variants',
+        showarrow: false, font: { size: 14, color: '#888' } },
+    ],
+  };
+  Plotly.newPlot('genome-plot', [], layout, { responsive: true, displaylogo: false });
+  plotInitialized = true;
+  document.getElementById('genome-plot').on('plotly_click', onPlotClick);
+}
+
+function onPlotClick(data) {
+  if (!data.points || !data.points.length) return;
+  const key = data.points[0].customdata;
+  if (key) selectVariant(key);
+}
+
+function highlightPlotPoint(agg) {
+  const plotEl = document.getElementById('genome-plot');
+  if (!plotEl.data || !plotEl.data.length) return;
+  const traces = plotEl.data.filter(t => t.name !== '_highlight');
+  traces.push({
+    x: [agg.pos], y: [agg.count], type: 'scatter', mode: 'markers',
+    marker: { color: 'rgba(255,255,255,0)', size: 20, line: { color: '#fff', width: 2.5 } },
+    hoverinfo: 'skip', showlegend: false, name: '_highlight',
+  });
+  Plotly.react('genome-plot', traces, plotEl.layout);
+}
+
+function clearPlotHighlight() {
+  const plotEl = document.getElementById('genome-plot');
+  if (plotEl.data) {
+    Plotly.react('genome-plot', plotEl.data.filter(t => t.name !== '_highlight'), plotEl.layout);
+  }
+}
+
+// ============================================================
+// DATA TABLE
+// ============================================================
+const aggColumns = [
+  { title: 'POS', field: 'pos', headerFilter: 'input', sorter: 'number', minWidth: 70 },
+  { title: 'REF', field: 'ref', headerFilter: 'input', minWidth: 50 },
+  { title: 'ALT', field: 'alt', headerFilter: 'input', minWidth: 50 },
+  { title: 'Gene', field: 'gene', headerFilter: 'input', minWidth: 70 },
+  { title: 'Annotation', field: 'aaChange', headerFilter: 'input', minWidth: 120,
+    formatter: c => c.getValue() || '-' },
+  { title: 'Type', field: 'type', headerFilter: 'input', minWidth: 90,
+    formatter: c => {
+      const t = c.getValue();
+      const labels = { syn: 'SYN', nonsyn: 'NONSYN', intergenic: 'INTER', unknown: 'UNK' };
+      return `<span class="type-badge type-${t}">${labels[t] || t}</span>`;
+    }
+  },
+  { title: 'Count', field: 'count', headerFilter: 'input', sorter: 'number', minWidth: 70, formatter: c => '<b>' + c.getValue() + '</b>' },
+  { title: 'Mean AF', field: 'meanAF', headerFilter: 'input', sorter: 'number', minWidth: 80,
+    formatter: c => { const v = c.getValue(); return v != null ? v.toFixed(4) : '-'; } },
+  { title: 'Min AF', field: 'minAF', sorter: 'number', minWidth: 75,
+    formatter: c => { const v = c.getValue(); return v != null ? v.toFixed(4) : '-'; } },
+  { title: 'Max AF', field: 'maxAF', sorter: 'number', minWidth: 75,
+    formatter: c => { const v = c.getValue(); return v != null ? v.toFixed(4) : '-'; } },
+];
+
+function buildDetailColumns() {
+  const cols = [
+    { title: 'Sample', field: 'file', headerFilter: 'input', minWidth: 120 },
+    { title: 'AF', field: 'af', headerFilter: 'input', sorter: 'number', minWidth: 70,
+      formatter: c => { const v = c.getValue(); return v != null ? v.toFixed(4) : '-'; } },
+    { title: 'DP', field: 'dp', headerFilter: 'input', sorter: 'number', minWidth: 60 },
+    { title: 'Filter', field: 'filter', headerFilter: 'input', minWidth: 70 },
+    { title: 'SB', field: 'sb', headerFilter: 'input', sorter: 'number', minWidth: 50 },
+    { title: 'DP4', field: 'dp4', headerFilter: 'input', minWidth: 100 },
+  ];
+  if (state.hasCleaned) {
+    cols.push(
+      { title: 'Flipped', field: 'flipped', headerFilter: 'input', minWidth: 70,
+        formatter: c => c.getValue() ? '<span class="flipped-badge">YES</span>' : '' },
+      { title: 'P-value', field: 'pvalCorr', headerFilter: 'input', sorter: 'number', minWidth: 80,
+        formatter: c => { const v = c.getValue(); if (v == null) return '-'; return v < 0.001 ? v.toExponential(2) : v.toFixed(4); } },
+    );
+  }
+  return cols;
+}
+
+function initTable() {
+  state.table = new Tabulator('#variant-table', {
+    data: [], columns: aggColumns, layout: 'fitColumns', height: '450px',
+    pagination: 'local', paginationSize: 50, paginationCounter: 'rows',
+    movableColumns: true, initialSort: [{ column: 'pos', dir: 'asc' }],
+    placeholder: 'No variants loaded. Drop VCF files above to begin.',
+  });
+  state.table.on('rowClick', (e, row) => {
+    if (state.tableMode === 'aggregated') selectVariant(row.getData().key);
+  });
+}
+
+function updateTable() {
+  if (!state.table) return;
+  const backBtn = document.getElementById('back-btn');
+  const tableTitle = document.getElementById('table-title');
+
+  if (state.tableMode === 'detail' && state.selectedVariantKey) {
+    const agg = state.aggregated.find(a => a.key === state.selectedVariantKey);
+    if (!agg) { state.tableMode = 'aggregated'; updateTable(); return; }
+    backBtn.style.display = 'inline-block';
+    tableTitle.textContent = `Samples with ${agg.ref}${agg.pos}${agg.alt} (${agg.gene})`;
+    state.table.setColumns(buildDetailColumns());
+    state.table.replaceData(agg.samples.map(s => ({...s})));
+    document.getElementById('table-count').textContent = `${agg.samples.length} sample${agg.samples.length !== 1 ? 's' : ''}`;
+  } else {
+    backBtn.style.display = 'none';
+    tableTitle.textContent = 'Variant Table';
+    state.tableMode = 'aggregated';
+    state.table.setColumns(aggColumns);
+    state.table.replaceData(state.aggregated.map(a => ({...a})));
+    document.getElementById('table-count').textContent = `${state.aggregated.length} unique variant${state.aggregated.length !== 1 ? 's' : ''}`;
+  }
+}
+
+document.getElementById('back-btn').addEventListener('click', () => {
+  state.tableMode = 'aggregated'; state.selectedVariantKey = null;
+  clearPlotHighlight(); updateTable();
+});
+
+// ============================================================
+// SELECT VARIANT
+// ============================================================
+function selectVariant(key) {
+  const agg = state.aggregated.find(a => a.key === key);
+  if (!agg) return;
+  state.selectedVariantKey = key;
+  state.tableMode = 'detail';
+  highlightPlotPoint(agg);
+  updateTable();
+  showDetailModal(agg);
+}
+
+// ============================================================
+// DETAIL MODAL
+// ============================================================
+function showDetailModal(agg) {
+  const body = document.getElementById('modal-body');
+  let html = '<div class="modal-grid">';
+  const fields = [
+    { label: 'Position', value: agg.pos },
+    { label: 'Change', value: `${agg.ref} &rarr; ${agg.alt}` },
+    { label: 'Gene', value: agg.gene },
+    { label: 'Annotation', value: agg.aaChange || '-' },
+    { label: 'Type', value: `<span class="type-badge type-${agg.type}">${agg.type.toUpperCase()}</span>` },
+    { label: 'Sample Count', value: `<b>${agg.count}</b>` },
+    { label: 'Mean AF', value: agg.meanAF != null ? agg.meanAF.toFixed(4) : '-' },
+    { label: 'AF Range', value: agg.minAF != null ? `${agg.minAF.toFixed(4)} - ${agg.maxAF.toFixed(4)}` : '-' },
+  ];
+  html += fields.map(f => `<div class="modal-field"><div class="mf-label">${f.label}</div><div class="mf-value">${f.value}</div></div>`).join('');
+  html += '</div>';
+  html += `<div class="modal-section-title">Found in ${agg.count} sample${agg.count !== 1 ? 's' : ''}</div>`;
+  html += '<table class="sample-list"><thead><tr><th>Sample</th><th>AF</th><th>DP</th><th>Filter</th>';
+  if (state.hasCleaned) html += '<th>Flipped</th><th>P-val</th>';
+  html += '</tr></thead><tbody>';
+  const sorted = [...agg.samples].sort((a, b) => (b.af || 0) - (a.af || 0));
+  for (const s of sorted) {
+    html += `<tr><td>${s.file}</td><td>${s.af != null ? s.af.toFixed(4) : '-'}</td><td>${s.dp != null ? s.dp : '-'}</td><td>${s.filter}</td>`;
+    if (state.hasCleaned) html += `<td>${s.flipped ? '<span class="flipped-badge">YES</span>' : ''}</td><td>${s.pvalCorr != null ? s.pvalCorr.toExponential(2) : '-'}</td>`;
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  body.innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('active');
+}
+
+document.getElementById('modal-close').addEventListener('click', () => document.getElementById('modal-overlay').classList.remove('active'));
+document.getElementById('modal-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) document.getElementById('modal-overlay').classList.remove('active'); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('modal-overlay').classList.remove('active'); });
+
+// ============================================================
+// EXPORT
+// ============================================================
+function exportTable(separator, ext) {
+  if (state.tableMode === 'detail' && state.selectedVariantKey) {
+    const agg = state.aggregated.find(a => a.key === state.selectedVariantKey);
+    if (!agg) return;
+    const cols = ['file', 'pos', 'ref', 'alt', 'af', 'dp', 'gene', 'aaChange', 'type', 'filter', 'sb', 'dp4'];
+    if (state.hasCleaned) cols.push('flipped', 'pval', 'pvalCorr', 'passBinom');
+    const headers = { file: 'Sample', pos: 'POS', ref: 'REF', alt: 'ALT', af: 'AF', dp: 'DP', gene: 'Gene', aaChange: 'Annotation', type: 'Type', filter: 'Filter', sb: 'SB', dp4: 'DP4', flipped: 'Flipped', pval: 'P-value', pvalCorr: 'P-value_corr', passBinom: 'PASS_BINOM' };
+    let content = cols.map(c => headers[c] || c).join(separator) + '\n';
+    for (const s of agg.samples) {
+      content += cols.map(c => { let v = s[c]; if (v == null) return ''; if (typeof v === 'boolean') return v ? 'true' : 'false'; if (typeof v === 'number' && c === 'af') return v.toFixed(6); return String(v); }).join(separator) + '\n';
+    }
+    downloadFile(content, `variant_${agg.pos}_${agg.ref}_${agg.alt}_samples.${ext}`);
+  } else {
+    const cols = ['pos', 'ref', 'alt', 'gene', 'aaChange', 'type', 'count', 'meanAF', 'minAF', 'maxAF'];
+    const headers = { pos: 'POS', ref: 'REF', alt: 'ALT', gene: 'Gene', aaChange: 'Annotation', type: 'Type', count: 'Sample_Count', meanAF: 'Mean_AF', minAF: 'Min_AF', maxAF: 'Max_AF' };
+    let content = cols.map(c => headers[c] || c).join(separator) + '\n';
+    for (const a of state.aggregated) {
+      content += cols.map(c => { let v = a[c]; if (v == null) return ''; if (typeof v === 'number' && (c === 'meanAF' || c === 'minAF' || c === 'maxAF')) return v.toFixed(6); return String(v); }).join(separator) + '\n';
+    }
+    downloadFile(content, `variants_aggregated.${ext}`);
+  }
+}
+
+function downloadFile(content, filename) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('export-csv').addEventListener('click', () => exportTable(',', 'csv'));
+document.getElementById('export-tsv').addEventListener('click', () => exportTable('\t', 'tsv'));
+document.getElementById('export-png').addEventListener('click', () => Plotly.downloadImage('genome-plot', { format: 'png', width: 1600, height: 500, filename: 'genome_plot' }));
+document.getElementById('export-svg').addEventListener('click', () => Plotly.downloadImage('genome-plot', { format: 'svg', width: 1600, height: 500, filename: 'genome_plot' }));
+
+// ============================================================
+// INIT
+// ============================================================
+initTable();
+initEmptyPlot();
+</script>
+</body>
+</html>
