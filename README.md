@@ -4,6 +4,8 @@ Interactive VCF browser for within-host variant exploration.
 
 **Try it now: [gagekmoreno.github.io/variscient](https://gagekmoreno.github.io/variscient/)**
 
+![Variscient screenshot](docs/screenshot.png)
+
 ## Overview
 
 Variscient is a single self-contained HTML application for visualizing and exploring within-host variants across multiple samples. No installation, no server — just open in a browser.
