@@ -30,6 +30,7 @@ Drop VCF files and the reference genome is autodetected from the CHROM field and
   - **Site Frequency Spectrum** — allele frequency histogram with 1/f neutral expectation overlay and dynamic shape summary interpretation
   - **Mutational Spectrum** — counts of all 12 single-nucleotide substitution types, colored by starting base
   - Each analysis has an independent type filter (All / Syn / Nonsyn / Intergenic) and responds to the main filters
+- **Colorblind mode** — toggle to an Okabe-Ito colorblind-safe palette for all plots, badges, and UI elements; preference persists via localStorage
 
 ## Usage
 
@@ -40,11 +41,15 @@ Drop VCF files and the reference genome is autodetected from the CHROM field and
 
 ## Variant Type Colors
 
-| Type | Color |
-|------|-------|
-| Synonymous | Teal |
-| Nonsynonymous | Burnt red |
-| Intergenic | Gray |
+| Type | Default | Colorblind Mode |
+|------|---------|-----------------|
+| Synonymous | Teal | Blue (#0072B2) |
+| Nonsynonymous | Burnt red | Vermillion (#D55E00) |
+| Intergenic | Gray | Yellow (#F0E442) |
+
+## Colorblind Mode
+
+Click the **Colorblind Mode** button in the top-right corner to switch all colors to an [Okabe-Ito](https://jfly.uni-koeln.de/color/) colorblind-safe palette. This affects variant type colors, gene track colors, mutational spectrum colors, and all analysis plots. The preference is saved in your browser and persists across sessions.
 
 ## License
 
