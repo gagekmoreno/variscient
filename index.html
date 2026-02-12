@@ -513,6 +513,11 @@
         </dl>
       </details>
       <div class="analysis-controls">
+        <label>Mode</label>
+        <div class="toggle-group" id="sfs-mode-toggle">
+          <button class="active" data-value="pooled">Pooled</button>
+          <button data-value="persample">Per Sample</button>
+        </div>
         <label>Type</label>
         <div class="toggle-group" id="sfs-type-toggle">
           <button class="active" data-value="all">All</button>
@@ -660,6 +665,7 @@ const state = {
 var activeTab = 'browser';
 var analysesNeedUpdate = false;
 var sfsTypeFilter = 'all';
+var sfsMode = 'pooled';
 var sfsInitialized = false;
 var vpsTypeFilter = 'all';
 var vpsInitialized = false;
@@ -2008,29 +2014,92 @@ function exportSFSData() {
   if (sfsTypeFilter !== 'all') {
     data = data.filter(function(v) { return v.type === sfsTypeFilter; });
   }
-  var afs = data.filter(function(v) { return v.af != null; }).map(function(v) { return v.af; });
   var nBins = 20;
   var binWidth = 1 / nBins;
-  var counts = new Array(nBins).fill(0);
-  for (var i = 0; i < afs.length; i++) {
-    var bin = Math.floor(afs[i] / binWidth);
-    if (bin >= nBins) bin = nBins - 1;
-    counts[bin]++;
-  }
   var binCenters = [];
   for (var i = 0; i < nBins; i++) binCenters.push((i + 0.5) * binWidth);
-  var totalObs = counts.reduce(function(a, b) { return a + b; }, 0);
-  var rawExpected = binCenters.map(function(f) { return 1 / f; });
-  var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
-  var normC = rawSum > 0 ? totalObs / rawSum : 0;
-  var expected = rawExpected.map(function(e) { return e * normC; });
 
-  var content = 'AF_Bin,Count,Expected\n';
-  for (var i = 0; i < nBins; i++) {
-    var label = (i * binWidth).toFixed(2) + '-' + ((i + 1) * binWidth).toFixed(2);
-    content += label + ',' + counts[i] + ',' + expected[i].toFixed(2) + '\n';
+  if (sfsMode === 'persample') {
+    // Group variants by sample
+    var sampleMap = {};
+    var withAF = data.filter(function(v) { return v.af != null; });
+    for (var i = 0; i < withAF.length; i++) {
+      var sName = withAF[i].file || 'unknown';
+      if (!sampleMap[sName]) sampleMap[sName] = [];
+      sampleMap[sName].push(withAF[i].af);
+    }
+    var sampleNames = Object.keys(sampleMap);
+    var nSamples = sampleNames.length;
+
+    // Compute per-sample histograms
+    var allSampleCounts = [];
+    for (var s = 0; s < nSamples; s++) {
+      var sCounts = new Array(nBins).fill(0);
+      var sAFs = sampleMap[sampleNames[s]];
+      for (var j = 0; j < sAFs.length; j++) {
+        var bin = Math.floor(sAFs[j] / binWidth);
+        if (bin >= nBins) bin = nBins - 1;
+        sCounts[bin]++;
+      }
+      allSampleCounts.push(sCounts);
+    }
+
+    // Compute per-bin mean, CI
+    var meanCounts = new Array(nBins).fill(0);
+    var ciLow = new Array(nBins).fill(0);
+    var ciHigh = new Array(nBins).fill(0);
+    if (nSamples > 0) {
+      for (var i = 0; i < nBins; i++) {
+        var sum = 0;
+        for (var s = 0; s < nSamples; s++) sum += allSampleCounts[s][i];
+        var mean = sum / nSamples;
+        meanCounts[i] = mean;
+        var sumSqDiff = 0;
+        for (var s = 0; s < nSamples; s++) {
+          var diff = allSampleCounts[s][i] - mean;
+          sumSqDiff += diff * diff;
+        }
+        var sd = nSamples > 1 ? Math.sqrt(sumSqDiff / (nSamples - 1)) : 0;
+        var se = nSamples > 1 ? sd / Math.sqrt(nSamples) : 0;
+        ciLow[i] = Math.max(0, mean - 1.96 * se);
+        ciHigh[i] = mean + 1.96 * se;
+      }
+    }
+
+    var meanTotal = meanCounts.reduce(function(a, b) { return a + b; }, 0);
+    var rawExpected = binCenters.map(function(f) { return 1 / f; });
+    var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
+    var normC = rawSum > 0 ? meanTotal / rawSum : 0;
+    var expected = rawExpected.map(function(e) { return e * normC; });
+
+    var content = 'AF_Bin,Mean_Count,CI_Low,CI_High,Expected,N_Samples\n';
+    for (var i = 0; i < nBins; i++) {
+      var label = (i * binWidth).toFixed(2) + '-' + ((i + 1) * binWidth).toFixed(2);
+      content += label + ',' + meanCounts[i].toFixed(2) + ',' + ciLow[i].toFixed(2) + ',' + ciHigh[i].toFixed(2) + ',' + expected[i].toFixed(2) + ',' + nSamples + '\n';
+    }
+    downloadFile(content, 'sfs_persample.csv');
+  } else {
+    // Pooled mode (original)
+    var afs = data.filter(function(v) { return v.af != null; }).map(function(v) { return v.af; });
+    var counts = new Array(nBins).fill(0);
+    for (var i = 0; i < afs.length; i++) {
+      var bin = Math.floor(afs[i] / binWidth);
+      if (bin >= nBins) bin = nBins - 1;
+      counts[bin]++;
+    }
+    var totalObs = counts.reduce(function(a, b) { return a + b; }, 0);
+    var rawExpected = binCenters.map(function(f) { return 1 / f; });
+    var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
+    var normC = rawSum > 0 ? totalObs / rawSum : 0;
+    var expected = rawExpected.map(function(e) { return e * normC; });
+
+    var content = 'AF_Bin,Count,Expected\n';
+    for (var i = 0; i < nBins; i++) {
+      var label = (i * binWidth).toFixed(2) + '-' + ((i + 1) * binWidth).toFixed(2);
+      content += label + ',' + counts[i] + ',' + expected[i].toFixed(2) + '\n';
+    }
+    downloadFile(content, 'sfs.csv');
   }
-  downloadFile(content, 'sfs.csv');
 }
 
 function exportMutSpectrumData() {
@@ -2251,6 +2320,16 @@ sfsTypeToggle.addEventListener('click', function(e) {
   updateSFS();
 });
 
+var sfsModeToggle = document.getElementById('sfs-mode-toggle');
+sfsModeToggle.addEventListener('click', function(e) {
+  var btn = e.target.closest('button');
+  if (!btn) return;
+  sfsModeToggle.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  sfsMode = btn.dataset.value;
+  updateSFS();
+});
+
 function sfsSummary(counts, expected, binCenters, totalObs) {
   if (totalObs === 0) return '';
   // Partition bins into low (AF<0.2), mid (0.2-0.8), high (>0.8)
@@ -2285,17 +2364,9 @@ function updateSFS() {
     data = data.filter(function(v) { return v.type === sfsTypeFilter; });
   }
 
-  var afs = data.filter(function(v) { return v.af != null; }).map(function(v) { return v.af; });
-
   var nBins = 20;
   var binWidth = 1 / nBins;
-  var counts = new Array(nBins).fill(0);
   var i, bin;
-  for (i = 0; i < afs.length; i++) {
-    bin = Math.floor(afs[i] / binWidth);
-    if (bin >= nBins) bin = nBins - 1;
-    counts[bin]++;
-  }
 
   var binCenters = [];
   var binLabels = [];
@@ -2304,37 +2375,142 @@ function updateSFS() {
     binLabels.push((i * binWidth).toFixed(2) + '-' + ((i + 1) * binWidth).toFixed(2));
   }
 
-  var totalObs = counts.reduce(function(a, b) { return a + b; }, 0);
-  var rawExpected = binCenters.map(function(f) { return 1 / f; });
-  var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
-  var normC = rawSum > 0 ? totalObs / rawSum : 0;
-  var expected = rawExpected.map(function(e) { return e * normC; });
-
   var typeBarColors = colorblindMode ? CB_TYPE_BAR_COLORS : DEFAULT_TYPE_BAR_COLORS;
   var barColor = typeBarColors[sfsTypeFilter] || typeBarColors.all;
+  var traces, shapeSummary, yAxisTitle;
 
-  var traces = [
-    {
-      x: binLabels, y: counts, type: 'bar', name: 'Observed',
-      marker: { color: barColor, opacity: 0.85 },
-      hovertemplate: 'AF bin: %{x}<br>Observed: %{y}<extra></extra>'
-    },
-    {
-      x: binLabels, y: expected, type: 'scatter', mode: 'lines+markers',
-      name: 'Neutral (1/f)', line: { color: '#f0c040', width: 2, dash: 'dot' },
-      marker: { color: '#f0c040', size: 5 },
-      hovertemplate: 'AF bin: %{x}<br>Neutral expected: %{y:.1f}<extra></extra>'
+  if (sfsMode === 'persample') {
+    // --- Per-sample mode ---
+    // Group variants by sample
+    var sampleMap = {};
+    var withAF = data.filter(function(v) { return v.af != null; });
+    for (i = 0; i < withAF.length; i++) {
+      var sName = withAF[i].file || 'unknown';
+      if (!sampleMap[sName]) sampleMap[sName] = [];
+      sampleMap[sName].push(withAF[i].af);
     }
-  ];
 
-  // Compute overall shape summary
-  var shapeSummary = sfsSummary(counts, expected, binCenters, totalObs);
+    var sampleNames = Object.keys(sampleMap);
+    var nSamples = sampleNames.length;
+
+    // Compute per-sample SFS histograms
+    var allSampleCounts = []; // array of arrays
+    for (var s = 0; s < nSamples; s++) {
+      var sCounts = new Array(nBins).fill(0);
+      var sAFs = sampleMap[sampleNames[s]];
+      for (i = 0; i < sAFs.length; i++) {
+        bin = Math.floor(sAFs[i] / binWidth);
+        if (bin >= nBins) bin = nBins - 1;
+        sCounts[bin]++;
+      }
+      allSampleCounts.push(sCounts);
+    }
+
+    // Compute per-bin mean, SD, and 95% CI
+    var meanCounts = new Array(nBins).fill(0);
+    var ciLow = new Array(nBins).fill(0);
+    var ciHigh = new Array(nBins).fill(0);
+
+    if (nSamples > 0) {
+      for (i = 0; i < nBins; i++) {
+        var sum = 0;
+        for (var s = 0; s < nSamples; s++) sum += allSampleCounts[s][i];
+        var mean = sum / nSamples;
+        meanCounts[i] = mean;
+
+        var sumSqDiff = 0;
+        for (var s = 0; s < nSamples; s++) {
+          var diff = allSampleCounts[s][i] - mean;
+          sumSqDiff += diff * diff;
+        }
+        var sd = nSamples > 1 ? Math.sqrt(sumSqDiff / (nSamples - 1)) : 0;
+        var se = nSamples > 1 ? sd / Math.sqrt(nSamples) : 0;
+        ciLow[i] = Math.max(0, mean - 1.96 * se);
+        ciHigh[i] = mean + 1.96 * se;
+      }
+    }
+
+    // Neutral 1/f line scaled to the mean total
+    var meanTotal = meanCounts.reduce(function(a, b) { return a + b; }, 0);
+    var rawExpected = binCenters.map(function(f) { return 1 / f; });
+    var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
+    var normC = rawSum > 0 ? meanTotal / rawSum : 0;
+    var expected = rawExpected.map(function(e) { return e * normC; });
+
+    // Error bar arrays (asymmetric: distance from mean)
+    var errPlus = [];
+    var errMinus = [];
+    for (i = 0; i < nBins; i++) {
+      errPlus.push(ciHigh[i] - meanCounts[i]);
+      errMinus.push(meanCounts[i] - ciLow[i]);
+    }
+
+    var customdata = meanCounts.map(function(m, idx) {
+      return [ciLow[idx].toFixed(2), ciHigh[idx].toFixed(2)];
+    });
+
+    traces = [
+      {
+        x: binLabels, y: meanCounts, type: 'bar', name: 'Mean per sample (n=' + nSamples + ')',
+        marker: { color: barColor, opacity: 0.85 },
+        error_y: {
+          type: 'data', symmetric: false,
+          array: errPlus, arrayminus: errMinus,
+          color: '#ccccdd', thickness: 1.5, width: 3
+        },
+        customdata: customdata,
+        hovertemplate: 'AF bin: %{x}<br>Mean: %{y:.2f}<br>95% CI: [%{customdata[0]}, %{customdata[1]}]<extra></extra>'
+      },
+      {
+        x: binLabels, y: expected, type: 'scatter', mode: 'lines+markers',
+        name: 'Neutral (1/f)', line: { color: '#f0c040', width: 2, dash: 'dot' },
+        marker: { color: '#f0c040', size: 5 },
+        hovertemplate: 'AF bin: %{x}<br>Neutral expected: %{y:.1f}<extra></extra>'
+      }
+    ];
+
+    shapeSummary = sfsSummary(meanCounts, expected, binCenters, meanTotal);
+    yAxisTitle = 'Mean Count per Sample';
+  } else {
+    // --- Pooled mode (original behavior) ---
+    var afs = data.filter(function(v) { return v.af != null; }).map(function(v) { return v.af; });
+
+    var counts = new Array(nBins).fill(0);
+    for (i = 0; i < afs.length; i++) {
+      bin = Math.floor(afs[i] / binWidth);
+      if (bin >= nBins) bin = nBins - 1;
+      counts[bin]++;
+    }
+
+    var totalObs = counts.reduce(function(a, b) { return a + b; }, 0);
+    var rawExpected = binCenters.map(function(f) { return 1 / f; });
+    var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
+    var normC = rawSum > 0 ? totalObs / rawSum : 0;
+    var expected = rawExpected.map(function(e) { return e * normC; });
+
+    traces = [
+      {
+        x: binLabels, y: counts, type: 'bar', name: 'Observed',
+        marker: { color: barColor, opacity: 0.85 },
+        hovertemplate: 'AF bin: %{x}<br>Observed: %{y}<extra></extra>'
+      },
+      {
+        x: binLabels, y: expected, type: 'scatter', mode: 'lines+markers',
+        name: 'Neutral (1/f)', line: { color: '#f0c040', width: 2, dash: 'dot' },
+        marker: { color: '#f0c040', size: 5 },
+        hovertemplate: 'AF bin: %{x}<br>Neutral expected: %{y:.1f}<extra></extra>'
+      }
+    ];
+
+    shapeSummary = sfsSummary(counts, expected, binCenters, totalObs);
+    yAxisTitle = 'Count';
+  }
 
   var layout = {
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
     font: { color: '#e0e0e8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
     xaxis: { title: 'Allele Frequency Bin', gridcolor: 'rgba(255,255,255,0.05)', tickangle: -45, tickfont: { size: 10 } },
-    yaxis: { title: 'Count', gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
+    yaxis: { title: yAxisTitle, gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
     margin: { t: 20, b: 80, l: 60, r: 20 },
     legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', bgcolor: 'rgba(0,0,0,0)', font: { size: 11 } },
     bargap: 0.08
