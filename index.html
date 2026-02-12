@@ -920,6 +920,50 @@ function classifyGeneByPos(pos) {
 }
 
 // ============================================================
+// dN/dS: COUNT CODON-LEVEL SYN / NONSYN CHANGES
+// ============================================================
+// Groups variants by codon so that multinucleotide changes within
+// a single codon are evaluated as one event against the reference.
+function countCodonChanges(variants, gene, seq, wStart, wEnd) {
+  var codonVariants = {};
+  for (var i = 0; i < variants.length; i++) {
+    var v = variants[i];
+    if (v.pos < gene.start || v.pos > gene.end) continue;
+    if (wStart !== undefined && (v.pos < wStart || v.pos > wEnd)) continue;
+    if (v.ref.length !== 1 || v.alt.length !== 1) continue;
+    var posInCDS = v.pos - gene.start;
+    var codonIdx = Math.floor(posInCDS / 3);
+    if (!codonVariants[codonIdx]) codonVariants[codonIdx] = [];
+    codonVariants[codonIdx].push(v);
+  }
+
+  var pS = 0, pN = 0;
+  var codonIndices = Object.keys(codonVariants);
+  for (var i = 0; i < codonIndices.length; i++) {
+    var ci = parseInt(codonIndices[i]);
+    var codonStart = gene.start + ci * 3;
+    if (codonStart - 1 < 0 || codonStart + 2 > seq.length) continue;
+    var refCodon = seq.substring(codonStart - 1, codonStart + 2).toUpperCase();
+    var refAA = CODON_TABLE[refCodon];
+    if (!refAA) continue;
+
+    // Apply all substitutions in this codon simultaneously
+    var mutCodon = refCodon.split('');
+    var cvars = codonVariants[ci];
+    for (var j = 0; j < cvars.length; j++) {
+      var posInCodon = (cvars[j].pos - gene.start) % 3;
+      mutCodon[posInCodon] = cvars[j].alt.toUpperCase();
+    }
+    var mutAA = CODON_TABLE[mutCodon.join('')];
+    if (!mutAA) continue;
+
+    if (mutAA === refAA) pS++;
+    else pN++;
+  }
+  return { pS: pS, pN: pN };
+}
+
+// ============================================================
 // dN/dS: COUNT SYNONYMOUS / NONSYNONYMOUS SITES (Nei-Gojobori)
 // ============================================================
 var BASES = ['A', 'C', 'G', 'T'];
@@ -2275,15 +2319,9 @@ function updateDnDsPerGene() {
     for (var si = 0; si < sampleNames.length; si++) {
       var vars = sampleMap[sampleNames[si]];
       if (!vars) continue;
-      var pS = 0, pN = 0;
-      for (var vi = 0; vi < vars.length; vi++) {
-        var vv = vars[vi];
-        if (vv.pos < gene.start || vv.pos > gene.end) continue;
-        if (vv.type === 'syn') pS++;
-        else if (vv.type === 'nonsyn') pN++;
-      }
-      var dS = pS / sites.synSites;
-      var dN = pN / sites.nonsynSites;
+      var counts = countCodonChanges(vars, gene, state.refSequence);
+      var dS = counts.pS / sites.synSites;
+      var dN = counts.pN / sites.nonsynSites;
       if (dS === 0) continue; // skip sample if no synonymous substitutions
       dndsValues.push(dN / dS);
     }
@@ -2448,15 +2486,9 @@ function updateDnDsRolling() {
       for (var si = 0; si < sampleNames.length; si++) {
         var vars = sampleMap[sampleNames[si]];
         if (!vars) continue;
-        var pS = 0, pN = 0;
-        for (var vi = 0; vi < vars.length; vi++) {
-          var vv = vars[vi];
-          if (vv.pos < wStart || vv.pos > wEnd) continue;
-          if (vv.type === 'syn') pS++;
-          else if (vv.type === 'nonsyn') pN++;
-        }
-        var dS = pS / synSites;
-        var dN = pN / nonsynSites;
+        var counts = countCodonChanges(vars, gene, seq, wStart, wEnd);
+        var dS = counts.pS / synSites;
+        var dN = counts.pN / nonsynSites;
         if (dS === 0) continue;
         dndsValues.push(dN / dS);
       }
