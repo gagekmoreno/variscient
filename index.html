@@ -237,7 +237,6 @@
   .tabulator .tabulator-footer .tabulator-page { background: var(--surface) !important; border: 1px solid var(--border) !important; color: var(--text) !important; border-radius: 3px !important; margin: 0 2px !important; }
   .tabulator .tabulator-footer .tabulator-page.active { background: var(--accent) !important; border-color: var(--accent) !important; color: #fff !important; }
 
-  .export-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
   .btn {
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--text); border-radius: 6px; padding: 7px 16px;
@@ -285,6 +284,13 @@
   .pass-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .pass-yes { background: var(--success); color: #fff; }
   .pass-no { background: var(--danger); color: #fff; }
+
+  .plot-export { display: flex; gap: 6px; justify-content: flex-end; padding: 4px 8px 0; }
+  .plot-export button {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 4px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+  }
+  .plot-export button:hover { border-color: var(--accent); color: var(--accent); }
 
   @media (max-width: 900px) {
     .filter-bar { flex-direction: column; }
@@ -419,13 +425,10 @@
       </div>
     </div>
     <div id="genome-plot"></div>
-  </div>
-
-  <div class="export-bar">
-    <button class="btn" id="export-csv">&#x2913; Export CSV</button>
-    <button class="btn" id="export-tsv">&#x2913; Export TSV</button>
-    <button class="btn" id="export-png">&#x1F4F7; Plot PNG</button>
-    <button class="btn" id="export-svg">&#x1F4F7; Plot SVG</button>
+    <div class="plot-export">
+      <button id="genome-png">PNG</button>
+      <button id="genome-svg">SVG</button>
+    </div>
   </div>
 
   <!-- Frequency histogram -->
@@ -445,6 +448,10 @@
       </div>
     </div>
     <div id="freq-histogram" style="width:100%; min-height:500px;"></div>
+    <div class="plot-export">
+      <button id="freq-png">PNG</button>
+      <button id="freq-csv">Data CSV</button>
+    </div>
   </div>
 
   <div class="table-container">
@@ -456,6 +463,10 @@
       <span class="table-count" id="table-count">0 variants</span>
     </div>
     <div id="variant-table"></div>
+    <div class="plot-export">
+      <button id="table-csv">CSV</button>
+      <button id="table-tsv">TSV</button>
+    </div>
   </div>
 
   </div><!-- end #tab-browser -->
@@ -476,6 +487,10 @@
         </div>
       </div>
       <div id="vps-plot" style="width:100%; height:420px;"></div>
+      <div class="plot-export">
+        <button id="vps-png">PNG</button>
+        <button id="vps-csv">Data CSV</button>
+      </div>
     </div>
 
     <!-- Site Frequency Spectrum -->
@@ -507,6 +522,10 @@
         </div>
       </div>
       <div id="sfs-plot" style="width:100%; height:420px;"></div>
+      <div class="plot-export">
+        <button id="sfs-png">PNG</button>
+        <button id="sfs-csv">Data CSV</button>
+      </div>
       <div id="sfs-summary" style="font-size:12px; color:var(--text-dim); padding:8px 4px 0; line-height:1.5;"></div>
     </div>
 
@@ -539,6 +558,10 @@
         </div>
       </div>
       <div id="mut-spectrum-plot" style="width:100%; height:420px;"></div>
+      <div class="plot-export">
+        <button id="mut-png">PNG</button>
+        <button id="mut-csv">Data CSV</button>
+      </div>
     </div>
 
     <!-- dN/dS Analysis -->
@@ -575,6 +598,10 @@
         </div>
       </div>
       <div id="dnds-plot" style="width:100%; height:420px;"></div>
+      <div class="plot-export">
+        <button id="dnds-png">PNG</button>
+        <button id="dnds-csv">Data CSV</button>
+      </div>
     </div>
 
   </div><!-- end #tab-analyses -->
@@ -1933,10 +1960,155 @@ function downloadFile(content, filename) {
   URL.revokeObjectURL(url);
 }
 
-document.getElementById('export-csv').addEventListener('click', () => exportTable(',', 'csv'));
-document.getElementById('export-tsv').addEventListener('click', () => exportTable('\t', 'tsv'));
-document.getElementById('export-png').addEventListener('click', () => Plotly.downloadImage('genome-plot', { format: 'png', width: 1600, height: 500, filename: 'genome_plot' }));
-document.getElementById('export-svg').addEventListener('click', () => Plotly.downloadImage('genome-plot', { format: 'svg', width: 1600, height: 500, filename: 'genome_plot' }));
+// ============================================================
+// PER-PLOT EXPORT HELPERS
+// ============================================================
+function downloadPlotImage(plotId, filename, format) {
+  var el = document.getElementById(plotId);
+  var h = (el && el.offsetHeight > 100) ? el.offsetHeight : 500;
+  Plotly.downloadImage(plotId, { format: format, width: 1600, height: h, filename: filename });
+}
+
+function exportFreqHistData() {
+  var topN = parseInt(document.getElementById('hist-top-n').value, 10) || 20;
+  var sorted = state.aggregated.slice().sort(function(a, b) { return b.count - a.count; }).slice(0, topN);
+  if (sorted.length === 0) return;
+  var content = 'POS,REF,ALT,Gene,Annotation,Type,Sample_Count\n';
+  for (var i = 0; i < sorted.length; i++) {
+    var v = sorted[i];
+    content += [v.pos, v.ref, v.alt, v.gene || '', v.aaChange || '', v.type || '', v.count].join(',') + '\n';
+  }
+  downloadFile(content, 'freq_histogram.csv');
+}
+
+function exportVPSData() {
+  var data = state.filtered;
+  if (vpsTypeFilter !== 'all') {
+    data = data.filter(function(v) { return v.type === vpsTypeFilter; });
+  }
+  var sampleCounts = {};
+  for (var i = 0; i < data.length; i++) {
+    var s = data[i].file;
+    sampleCounts[s] = (sampleCounts[s] || 0) + 1;
+  }
+  for (var i = 0; i < state.fileNames.length; i++) {
+    var name = sampleName(state.fileNames[i]);
+    if (sampleCounts[name] === undefined) sampleCounts[name] = 0;
+  }
+  var samples = Object.keys(sampleCounts).sort();
+  var content = 'Sample,Variant_Count\n';
+  for (var i = 0; i < samples.length; i++) {
+    content += samples[i] + ',' + sampleCounts[samples[i]] + '\n';
+  }
+  downloadFile(content, 'variants_per_sample.csv');
+}
+
+function exportSFSData() {
+  var data = state.filtered;
+  if (sfsTypeFilter !== 'all') {
+    data = data.filter(function(v) { return v.type === sfsTypeFilter; });
+  }
+  var afs = data.filter(function(v) { return v.af != null; }).map(function(v) { return v.af; });
+  var nBins = 20;
+  var binWidth = 1 / nBins;
+  var counts = new Array(nBins).fill(0);
+  for (var i = 0; i < afs.length; i++) {
+    var bin = Math.floor(afs[i] / binWidth);
+    if (bin >= nBins) bin = nBins - 1;
+    counts[bin]++;
+  }
+  var binCenters = [];
+  for (var i = 0; i < nBins; i++) binCenters.push((i + 0.5) * binWidth);
+  var totalObs = counts.reduce(function(a, b) { return a + b; }, 0);
+  var rawExpected = binCenters.map(function(f) { return 1 / f; });
+  var rawSum = rawExpected.reduce(function(a, b) { return a + b; }, 0);
+  var normC = rawSum > 0 ? totalObs / rawSum : 0;
+  var expected = rawExpected.map(function(e) { return e * normC; });
+
+  var content = 'AF_Bin,Count,Expected\n';
+  for (var i = 0; i < nBins; i++) {
+    var label = (i * binWidth).toFixed(2) + '-' + ((i + 1) * binWidth).toFixed(2);
+    content += label + ',' + counts[i] + ',' + expected[i].toFixed(2) + '\n';
+  }
+  downloadFile(content, 'sfs.csv');
+}
+
+function exportMutSpectrumData() {
+  var data = state.filtered;
+  if (mutTypeFilter !== 'all') {
+    data = data.filter(function(v) { return v.type === mutTypeFilter; });
+  }
+  var subs = data.filter(function(v) { return v.ref.length === 1 && v.alt.length === 1; });
+  var counts = {};
+  for (var i = 0; i < MUT_CATEGORIES.length; i++) counts[MUT_CATEGORIES[i]] = 0;
+  for (var i = 0; i < subs.length; i++) {
+    var key = subs[i].ref.toUpperCase() + '>' + subs[i].alt.toUpperCase();
+    if (counts[key] !== undefined) counts[key]++;
+  }
+  var content = 'Substitution,Count\n';
+  for (var i = 0; i < MUT_CATEGORIES.length; i++) {
+    content += MUT_CATEGORIES[i] + ',' + counts[MUT_CATEGORIES[i]] + '\n';
+  }
+  downloadFile(content, 'mutational_spectrum.csv');
+}
+
+function exportDnDsData() {
+  var plotEl = document.getElementById('dnds-plot');
+  if (!plotEl || !plotEl.data || plotEl.data.length === 0) return;
+
+  if (dndsMode === 'pergene') {
+    // Per-gene: first trace has x=geneNames, y=means, error_y with array/arrayminus
+    var trace = plotEl.data[0];
+    if (!trace || !trace.x) return;
+    var content = 'Gene,Mean_dNdS,CI_Low,CI_High\n';
+    for (var i = 0; i < trace.x.length; i++) {
+      var mean = trace.y[i];
+      var minus = (trace.error_y && trace.error_y.arrayminus) ? trace.error_y.arrayminus[i] : 0;
+      var plus = (trace.error_y && trace.error_y.array) ? trace.error_y.array[i] : 0;
+      content += trace.x[i] + ',' + mean.toFixed(4) + ',' + (mean - minus).toFixed(4) + ',' + (mean + plus).toFixed(4) + '\n';
+    }
+    downloadFile(content, 'dnds_per_gene.csv');
+  } else {
+    // Rolling: traces come in groups of 3 per gene (ciHigh, ciLow, mean)
+    // The mean trace has hovertemplate containing gene name
+    var content = 'Position,Gene,Mean_dNdS,CI_Low,CI_High\n';
+    var traces = plotEl.data;
+    for (var t = 0; t + 2 < traces.length; t += 3) {
+      var ciHighTrace = traces[t];
+      var ciLowTrace = traces[t + 1];
+      var meanTrace = traces[t + 2];
+      if (!meanTrace || !meanTrace.x) continue;
+      var geneName = '';
+      if (meanTrace.hovertemplate) {
+        var m = meanTrace.hovertemplate.match(/^([^<]+)/);
+        if (m) geneName = m[1];
+      }
+      for (var i = 0; i < meanTrace.x.length; i++) {
+        content += Math.round(meanTrace.x[i]) + ',' + geneName + ',' +
+          meanTrace.y[i].toFixed(4) + ',' +
+          ciLowTrace.y[i].toFixed(4) + ',' +
+          ciHighTrace.y[i].toFixed(4) + '\n';
+      }
+    }
+    downloadFile(content, 'dnds_rolling.csv');
+  }
+}
+
+// Wire per-plot export buttons
+document.getElementById('genome-png').addEventListener('click', function() { downloadPlotImage('genome-plot', 'genome_plot', 'png'); });
+document.getElementById('genome-svg').addEventListener('click', function() { downloadPlotImage('genome-plot', 'genome_plot', 'svg'); });
+document.getElementById('freq-png').addEventListener('click', function() { downloadPlotImage('freq-histogram', 'freq_histogram', 'png'); });
+document.getElementById('freq-csv').addEventListener('click', exportFreqHistData);
+document.getElementById('table-csv').addEventListener('click', function() { exportTable(',', 'csv'); });
+document.getElementById('table-tsv').addEventListener('click', function() { exportTable('\t', 'tsv'); });
+document.getElementById('vps-png').addEventListener('click', function() { downloadPlotImage('vps-plot', 'variants_per_sample', 'png'); });
+document.getElementById('vps-csv').addEventListener('click', exportVPSData);
+document.getElementById('sfs-png').addEventListener('click', function() { downloadPlotImage('sfs-plot', 'site_frequency_spectrum', 'png'); });
+document.getElementById('sfs-csv').addEventListener('click', exportSFSData);
+document.getElementById('mut-png').addEventListener('click', function() { downloadPlotImage('mut-spectrum-plot', 'mutational_spectrum', 'png'); });
+document.getElementById('mut-csv').addEventListener('click', exportMutSpectrumData);
+document.getElementById('dnds-png').addEventListener('click', function() { downloadPlotImage('dnds-plot', 'dnds', 'png'); });
+document.getElementById('dnds-csv').addEventListener('click', exportDnDsData);
 
 // ============================================================
 // VARIANTS PER SAMPLE
