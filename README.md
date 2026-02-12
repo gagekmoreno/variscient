@@ -29,6 +29,7 @@ Drop VCF files and the reference genome is autodetected from the CHROM field and
   - **Variants Per Sample** — histogram of variant counts per sample with mean and median lines
   - **Site Frequency Spectrum** — allele frequency histogram with 1/f neutral expectation overlay and dynamic shape summary interpretation
   - **Mutational Spectrum** — counts of all 12 single-nucleotide substitution types, colored by starting base
+  - **dN/dS** — ratio of nonsynonymous to synonymous substitution rates (Nei-Gojobori method), computed per sample then aggregated as mean with 95% CI. Two modes: Per Gene (bar chart per gene) and Rolling Window (sliding window within each gene at 10–500 nt resolution, plotted across the genome)
   - Each analysis has an independent type filter (All / Syn / Nonsyn / Intergenic) and responds to the main filters
 - **Colorblind mode** — toggle to an Okabe-Ito colorblind-safe palette for all plots, badges, and UI elements; preference persists via localStorage
 
