@@ -27,7 +27,7 @@ Drop VCF files and the reference genome is autodetected from the CHROM field and
 - **Export** — download filtered table as CSV/TSV, download plot as PNG/SVG
 - **Analyses tab** — dedicated tab with population genetics and mutational analyses:
   - **Variants Per Sample** — histogram of variant counts per sample with mean and median lines
-  - **Site Frequency Spectrum** — allele frequency histogram with 1/f neutral expectation overlay and dynamic shape summary interpretation
+  - **Site Frequency Spectrum** — allele frequency histogram with 1/f neutral expectation overlay and dynamic shape summary interpretation. Two modes: Pooled (all variants combined) and Per Sample (mean count per bin with 95% CI error bars, revealing inter-sample variability)
   - **Mutational Spectrum** — counts of all 12 single-nucleotide substitution types, colored by starting base
   - **dN/dS** — ratio of nonsynonymous to synonymous substitution rates (Nei-Gojobori method), computed per sample then aggregated as mean with 95% CI. Two modes: Per Gene (bar chart per gene) and Rolling Window (sliding window within each gene at 10–500 nt resolution, plotted across the genome)
   - Each analysis has an independent type filter (All / Syn / Nonsyn / Intergenic) and responds to the main filters
