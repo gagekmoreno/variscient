@@ -358,7 +358,7 @@
       </div>
     </div>
     <div class="filter-group">
-      <label>Min DP</label>
+      <label>Min Depth</label>
       <input type="number" id="dp-min" value="0" min="0" step="10" style="width:80px;">
     </div>
     <div class="filter-group">
@@ -541,6 +541,42 @@
       <div id="mut-spectrum-plot" style="width:100%; height:420px;"></div>
     </div>
 
+    <!-- dN/dS Analysis -->
+    <div class="analysis-section">
+      <h3>dN/dS</h3>
+      <details class="analysis-guide">
+        <summary>How to interpret this plot</summary>
+        <p style="margin-top:6px;">dN/dS (also called &omega;) is the ratio of nonsynonymous to synonymous substitution rates. It measures selective pressure on protein-coding genes:</p>
+        <dl>
+          <dt>dN/dS &asymp; 1</dt>
+          <dd>Neutral evolution &mdash; nonsynonymous and synonymous changes accumulate at similar rates, suggesting no strong selection on the protein.</dd>
+          <dt>dN/dS &lt; 1 (purifying selection)</dt>
+          <dd>Nonsynonymous changes are removed by selection, preserving protein function. Most genes fall here.</dd>
+          <dt>dN/dS &gt; 1 (positive selection)</dt>
+          <dd>Nonsynonymous changes are favoured, suggesting adaptive evolution &mdash; e.g., immune evasion or host adaptation.</dd>
+          <dt>Error bars</dt>
+          <dd>95% confidence intervals from per-sample variation. Wide bars indicate high heterogeneity across samples.</dd>
+        </dl>
+      </details>
+      <div class="analysis-controls">
+        <label>Mode</label>
+        <div class="toggle-group" id="dnds-mode-toggle">
+          <button class="active" data-value="pergene">Per Gene</button>
+          <button data-value="rolling">Rolling Window</button>
+        </div>
+        <label id="dnds-window-label" style="display:none;">Window (nt)</label>
+        <div class="toggle-group" id="dnds-window-toggle" style="display:none;">
+          <button data-value="10">10</button>
+          <button data-value="25">25</button>
+          <button data-value="50">50</button>
+          <button class="active" data-value="100">100</button>
+          <button data-value="200">200</button>
+          <button data-value="500">500</button>
+        </div>
+      </div>
+      <div id="dnds-plot" style="width:100%; height:420px;"></div>
+    </div>
+
   </div><!-- end #tab-analyses -->
 
 </div>
@@ -602,6 +638,10 @@ var vpsTypeFilter = 'all';
 var vpsInitialized = false;
 var mutTypeFilter = 'all';
 var mutInitialized = false;
+var dndsMode = 'pergene';
+var dndsWindowSize = 100;
+var dndsInitialized = false;
+var siteCache = {};
 
 var COMPLEMENT = { A: 'T', T: 'A', C: 'G', G: 'C' };
 var MUT_CATEGORIES = [
@@ -671,6 +711,7 @@ function toggleColorblindMode() {
     updateVPS();
     updateSFS();
     updateMutSpectrum();
+    updateDnDs();
   } else {
     analysesNeedUpdate = true;
   }
@@ -879,6 +920,52 @@ function classifyGeneByPos(pos) {
 }
 
 // ============================================================
+// dN/dS: COUNT SYNONYMOUS / NONSYNONYMOUS SITES (Nei-Gojobori)
+// ============================================================
+var BASES = ['A', 'C', 'G', 'T'];
+
+function countSynNonsynSites(gene) {
+  var key = gene.name + ':' + gene.start + '-' + gene.end;
+  if (siteCache[key]) return siteCache[key];
+
+  var seq = state.refSequence;
+  if (!seq) return null;
+
+  var synSites = 0, nonsynSites = 0;
+  var cdsLen = gene.end - gene.start + 1;
+  var nCodons = Math.floor(cdsLen / 3);
+
+  for (var ci = 0; ci < nCodons; ci++) {
+    var codonStart = gene.start + ci * 3; // 1-based
+    if (codonStart - 1 < 0 || codonStart + 2 > seq.length) continue;
+    var codon = seq.substring(codonStart - 1, codonStart + 2).toUpperCase();
+    var refAA = CODON_TABLE[codon];
+    if (!refAA) continue;
+
+    // For each position in the codon, count syn/nonsyn single-nt changes
+    for (var p = 0; p < 3; p++) {
+      var synChanges = 0, nonsynChanges = 0;
+      var origBase = codon[p];
+      for (var bi = 0; bi < 4; bi++) {
+        var newBase = BASES[bi];
+        if (newBase === origBase) continue;
+        var mutCodon = codon.substring(0, p) + newBase + codon.substring(p + 1);
+        var mutAA = CODON_TABLE[mutCodon];
+        if (!mutAA) continue;
+        if (mutAA === refAA) synChanges++;
+        else nonsynChanges++;
+      }
+      synSites += synChanges / 3;
+      nonsynSites += nonsynChanges / 3;
+    }
+  }
+
+  var result = { synSites: synSites, nonsynSites: nonsynSites };
+  siteCache[key] = result;
+  return result;
+}
+
+// ============================================================
 // REFERENCE LOADING
 // ============================================================
 function loadReference(gbText) {
@@ -888,6 +975,8 @@ function loadReference(gbText) {
   state.refName = ref.organism || ref.definition;
   state.refAccession = ref.accession;
   state.refSequence = ref.sequence;
+  siteCache = {};
+  dndsInitialized = false;
 
   updateRefUI();
   updateGeneFilter();
@@ -932,6 +1021,8 @@ function clearReference() {
   state.refName = '';
   state.refAccession = '';
   state.refSequence = '';
+  siteCache = {};
+  dndsInitialized = false;
   updateRefUI();
   updateGeneFilter();
   // Re-classify variants without reference
@@ -1283,6 +1374,7 @@ function applyFilters() {
     updateVPS();
     updateSFS();
     updateMutSpectrum();
+    updateDnDs();
   } else {
     analysesNeedUpdate = true;
   }
@@ -1920,6 +2012,7 @@ function switchTab(tab) {
     updateVPS();
     updateSFS();
     updateMutSpectrum();
+    updateDnDs();
     analysesNeedUpdate = false;
   }
 }
@@ -2100,6 +2193,374 @@ function updateMutSpectrum() {
     mutInitialized = true;
   } else {
     Plotly.react('mut-spectrum-plot', [trace], layout, config);
+  }
+}
+
+// ============================================================
+// dN/dS ANALYSIS
+// ============================================================
+var dndsToggle = document.getElementById('dnds-mode-toggle');
+dndsToggle.addEventListener('click', function(e) {
+  var btn = e.target.closest('button');
+  if (!btn) return;
+  dndsToggle.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  dndsMode = btn.dataset.value;
+  var winVis = dndsMode === 'rolling' ? '' : 'none';
+  document.getElementById('dnds-window-label').style.display = winVis;
+  document.getElementById('dnds-window-toggle').style.display = winVis;
+  updateDnDs();
+});
+
+var dndsWinToggle = document.getElementById('dnds-window-toggle');
+dndsWinToggle.addEventListener('click', function(e) {
+  var btn = e.target.closest('button');
+  if (!btn) return;
+  dndsWinToggle.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  dndsWindowSize = parseInt(btn.dataset.value, 10);
+  updateDnDs();
+});
+
+function updateDnDs() {
+  var plotDiv = document.getElementById('dnds-plot');
+  if (!state.refSequence || state.genes.length === 0) {
+    Plotly.purge(plotDiv);
+    plotDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:80px 20px; font-size:14px;">Load a GenBank reference to compute dN/dS.</div>';
+    dndsInitialized = false;
+    return;
+  }
+  if (!dndsInitialized) {
+    plotDiv.innerHTML = '';
+  }
+
+  if (dndsMode === 'pergene') {
+    updateDnDsPerGene();
+  } else {
+    updateDnDsRolling();
+  }
+}
+
+function updateDnDsPerGene() {
+  var genes = state.genes;
+  var data = state.filtered;
+
+  // Group variants by sample
+  var sampleMap = {};
+  for (var i = 0; i < data.length; i++) {
+    var v = data[i];
+    if (v.ref.length !== 1 || v.alt.length !== 1) continue;
+    if (v.type !== 'syn' && v.type !== 'nonsyn') continue;
+    var sn = v.sample || v.file || 'unknown';
+    if (!sampleMap[sn]) sampleMap[sn] = [];
+    sampleMap[sn].push(v);
+  }
+  var sampleNames = Object.keys(sampleMap);
+  if (sampleNames.length === 0) {
+    var plotDiv = document.getElementById('dnds-plot');
+    Plotly.purge(plotDiv);
+    plotDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:80px 20px; font-size:14px;">No variant data available for dN/dS computation.</div>';
+    dndsInitialized = false;
+    return;
+  }
+
+  var geneNames = [], means = [], ciLow = [], ciHigh = [], nSamples = [];
+
+  for (var gi = 0; gi < genes.length; gi++) {
+    var gene = genes[gi];
+    var sites = countSynNonsynSites(gene);
+    if (!sites || sites.synSites === 0 || sites.nonsynSites === 0) continue;
+
+    var dndsValues = [];
+    for (var si = 0; si < sampleNames.length; si++) {
+      var vars = sampleMap[sampleNames[si]];
+      if (!vars) continue;
+      var pS = 0, pN = 0;
+      for (var vi = 0; vi < vars.length; vi++) {
+        var vv = vars[vi];
+        if (vv.pos < gene.start || vv.pos > gene.end) continue;
+        if (vv.type === 'syn') pS++;
+        else if (vv.type === 'nonsyn') pN++;
+      }
+      var dS = pS / sites.synSites;
+      var dN = pN / sites.nonsynSites;
+      if (dS === 0) continue; // skip sample if no synonymous substitutions
+      dndsValues.push(dN / dS);
+    }
+
+    if (dndsValues.length === 0) continue;
+
+    var mean = 0;
+    for (var k = 0; k < dndsValues.length; k++) mean += dndsValues[k];
+    mean /= dndsValues.length;
+
+    var se = 0;
+    if (dndsValues.length > 1) {
+      var variance = 0;
+      for (var k = 0; k < dndsValues.length; k++) variance += (dndsValues[k] - mean) * (dndsValues[k] - mean);
+      variance /= (dndsValues.length - 1);
+      se = Math.sqrt(variance / dndsValues.length);
+    }
+
+    geneNames.push(gene.name);
+    means.push(mean);
+    ciLow.push(Math.max(0, mean - 1.96 * se));
+    ciHigh.push(mean + 1.96 * se);
+    nSamples.push(dndsValues.length);
+  }
+
+  if (geneNames.length === 0) {
+    var plotDiv = document.getElementById('dnds-plot');
+    Plotly.purge(plotDiv);
+    plotDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:80px 20px; font-size:14px;">Insufficient data to compute dN/dS (need both syn and nonsyn variants per gene).</div>';
+    dndsInitialized = false;
+    return;
+  }
+
+  var barColor = colorblindMode ? '#56B4E9' : '#5b8def';
+  var hoverText = [];
+  for (var i = 0; i < geneNames.length; i++) {
+    hoverText.push(geneNames[i] + '<br>dN/dS: ' + means[i].toFixed(3) +
+      '<br>95% CI: [' + ciLow[i].toFixed(3) + ', ' + ciHigh[i].toFixed(3) + ']' +
+      '<br>' + nSamples[i] + ' VCFs with ≥1 syn variant');
+  }
+
+  var errYMinus = [], errYPlus = [];
+  for (var i = 0; i < means.length; i++) {
+    errYMinus.push(means[i] - ciLow[i]);
+    errYPlus.push(ciHigh[i] - means[i]);
+  }
+
+  var trace = {
+    x: geneNames, y: means, type: 'bar',
+    marker: { color: barColor, opacity: 0.9, line: { width: 1, color: 'rgba(255,255,255,0.3)' } },
+    error_y: {
+      type: 'data', symmetric: false,
+      array: errYPlus, arrayminus: errYMinus,
+      visible: true, color: '#ffffff', thickness: 1.5, width: 4
+    },
+    text: hoverText, hoverinfo: 'text'
+  };
+
+  var layout = {
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e0e0e8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
+    xaxis: { title: 'Gene', gridcolor: 'rgba(255,255,255,0.05)', tickfont: { size: 11, color: '#e0e0e8' } },
+    yaxis: { title: 'dN/dS', gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
+    margin: { t: 30, b: 60, l: 60, r: 20 },
+    bargap: 0.2,
+    shapes: [{
+      type: 'line', xref: 'paper', x0: 0, x1: 1,
+      yref: 'y', y0: 1, y1: 1,
+      line: { color: '#f0c040', width: 2, dash: 'dash' }
+    }],
+    annotations: [{
+      x: 1, xref: 'paper', xanchor: 'right',
+      y: 1, yref: 'y', yanchor: 'bottom',
+      text: 'neutral (dN/dS = 1)', showarrow: false,
+      font: { color: '#f0c040', size: 10 }
+    }]
+  };
+  var config = { responsive: true, displayModeBar: true, displaylogo: false };
+
+  if (!dndsInitialized) {
+    Plotly.newPlot('dnds-plot', [trace], layout, config);
+    dndsInitialized = true;
+  } else {
+    Plotly.react('dnds-plot', [trace], layout, config);
+  }
+}
+
+function updateDnDsRolling() {
+  var seq = state.refSequence;
+  var genes = state.genes;
+  var data = state.filtered;
+  var winSize = dndsWindowSize;
+  var step = Math.max(1, Math.floor(winSize / 5));
+
+  // Group variants by sample
+  var sampleMap = {};
+  for (var i = 0; i < data.length; i++) {
+    var v = data[i];
+    if (v.ref.length !== 1 || v.alt.length !== 1) continue;
+    if (v.type !== 'syn' && v.type !== 'nonsyn') continue;
+    var sn = v.sample || v.file || 'unknown';
+    if (!sampleMap[sn]) sampleMap[sn] = [];
+    sampleMap[sn].push(v);
+  }
+  var sampleNames = Object.keys(sampleMap);
+
+  // Build traces per gene — slide window within each gene only
+  var traces = [];
+  var hasData = false;
+  var geneShapes = [];
+  var geneAnnotations = [];
+  var palette = colorblindMode ? CB_GENE_PALETTE : GENE_PALETTE;
+
+  for (var gi = 0; gi < genes.length; gi++) {
+    var gene = genes[gi];
+    var geneLen = gene.end - gene.start + 1;
+    if (geneLen < winSize) continue; // gene too short for this window
+
+    var geneColor = gene.color || palette[gi % palette.length];
+    var midpoints = [], meanVals = [], ciLowVals = [], ciHighVals = [];
+
+    for (var wStart = gene.start; wStart + winSize - 1 <= gene.end; wStart += step) {
+      var wEnd = wStart + winSize - 1;
+      var midpoint = (wStart + wEnd) / 2;
+
+      // Count syn/nonsyn sites in this window (all within this gene)
+      var synSites = 0, nonsynSites = 0;
+      var cdsOffset = wStart - gene.start;
+      var firstCodon = Math.floor(cdsOffset / 3);
+      var lastCodon = Math.floor((wEnd - gene.start) / 3);
+      var nCodons = Math.floor(geneLen / 3);
+
+      for (var ci = firstCodon; ci <= lastCodon && ci < nCodons; ci++) {
+        var codonStart = gene.start + ci * 3;
+        if (codonStart - 1 < 0 || codonStart + 2 > seq.length) continue;
+        var codon = seq.substring(codonStart - 1, codonStart + 2).toUpperCase();
+        var refAA = CODON_TABLE[codon];
+        if (!refAA) continue;
+
+        for (var p = 0; p < 3; p++) {
+          var sitePos = codonStart + p;
+          if (sitePos < wStart || sitePos > wEnd) continue;
+          var synC = 0, nonsynC = 0;
+          var origBase = codon[p];
+          for (var bi = 0; bi < 4; bi++) {
+            var nb = BASES[bi];
+            if (nb === origBase) continue;
+            var mc = codon.substring(0, p) + nb + codon.substring(p + 1);
+            var mAA = CODON_TABLE[mc];
+            if (!mAA) continue;
+            if (mAA === refAA) synC++; else nonsynC++;
+          }
+          synSites += synC / 3;
+          nonsynSites += nonsynC / 3;
+        }
+      }
+
+      if (synSites === 0 || nonsynSites === 0) continue;
+
+      // Per-sample dN/dS for this window
+      var dndsValues = [];
+      for (var si = 0; si < sampleNames.length; si++) {
+        var vars = sampleMap[sampleNames[si]];
+        if (!vars) continue;
+        var pS = 0, pN = 0;
+        for (var vi = 0; vi < vars.length; vi++) {
+          var vv = vars[vi];
+          if (vv.pos < wStart || vv.pos > wEnd) continue;
+          if (vv.type === 'syn') pS++;
+          else if (vv.type === 'nonsyn') pN++;
+        }
+        var dS = pS / synSites;
+        var dN = pN / nonsynSites;
+        if (dS === 0) continue;
+        dndsValues.push(dN / dS);
+      }
+
+      if (dndsValues.length === 0) continue;
+
+      var mean = 0;
+      for (var k = 0; k < dndsValues.length; k++) mean += dndsValues[k];
+      mean /= dndsValues.length;
+
+      var se = 0;
+      if (dndsValues.length > 1) {
+        var variance = 0;
+        for (var k = 0; k < dndsValues.length; k++) variance += (dndsValues[k] - mean) * (dndsValues[k] - mean);
+        variance /= (dndsValues.length - 1);
+        se = Math.sqrt(variance / dndsValues.length);
+      }
+
+      midpoints.push(midpoint);
+      meanVals.push(mean);
+      ciLowVals.push(Math.max(0, mean - 1.96 * se));
+      ciHighVals.push(mean + 1.96 * se);
+    }
+
+    if (midpoints.length === 0) continue;
+    hasData = true;
+
+    // CI band (upper then lower with fill) + mean line, per gene
+    traces.push({
+      x: midpoints, y: ciHighVals, type: 'scatter', mode: 'lines',
+      line: { width: 0 }, showlegend: false, hoverinfo: 'skip'
+    });
+    // Parse gene color to rgba for fill
+    var fillAlpha = '0.12';
+    var rgbMatch = geneColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+    var fillColor = rgbMatch
+      ? 'rgba(' + parseInt(rgbMatch[1],16) + ',' + parseInt(rgbMatch[2],16) + ',' + parseInt(rgbMatch[3],16) + ',' + fillAlpha + ')'
+      : 'rgba(91,141,239,0.12)';
+    traces.push({
+      x: midpoints, y: ciLowVals, type: 'scatter', mode: 'lines',
+      line: { width: 0 }, fill: 'tonexty', fillcolor: fillColor,
+      showlegend: false, hoverinfo: 'skip'
+    });
+    traces.push({
+      x: midpoints, y: meanVals, type: 'scatter', mode: 'lines',
+      line: { color: geneColor, width: 2 },
+      showlegend: false,
+      hovertemplate: gene.name + '<br>Position: %{x:.0f}<br>dN/dS: %{y:.3f}<extra></extra>'
+    });
+
+    // Subtle background shading for gene region
+    geneShapes.push({
+      type: 'rect', xref: 'x', yref: 'paper',
+      x0: gene.start, x1: gene.end, y0: 0, y1: 1,
+      fillcolor: 'rgba(255,255,255,0.03)', line: { width: 0 }
+    });
+    // Gene label below the line segment
+    geneAnnotations.push({
+      x: (gene.start + gene.end) / 2, xref: 'x',
+      y: 0, yref: 'paper', yanchor: 'top', yshift: -4,
+      text: gene.name, showarrow: false,
+      font: { color: geneColor, size: 10 }
+    });
+  }
+
+  if (!hasData) {
+    var plotDiv = document.getElementById('dnds-plot');
+    Plotly.purge(plotDiv);
+    plotDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:80px 20px; font-size:14px;">Insufficient data for rolling window dN/dS (genes may be shorter than window size).</div>';
+    dndsInitialized = false;
+    return;
+  }
+
+  // Neutral line
+  geneShapes.push({
+    type: 'line', xref: 'paper', x0: 0, x1: 1,
+    yref: 'y', y0: 1, y1: 1,
+    line: { color: '#f0c040', width: 2, dash: 'dash' }
+  });
+  geneAnnotations.push({
+    x: 1, xref: 'paper', xanchor: 'right',
+    y: 1, yref: 'y', yanchor: 'bottom',
+    text: 'neutral (dN/dS = 1)', showarrow: false,
+    font: { color: '#f0c040', size: 10 }
+  });
+
+  var genomeLen = state.genomeLength || seq.length;
+  var layout = {
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e0e0e8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
+    xaxis: { title: 'Genome Position (nt)', range: [1, genomeLen], gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)' },
+    yaxis: { title: 'dN/dS', gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(255,255,255,0.1)', rangemode: 'tozero' },
+    margin: { t: 30, b: 80, l: 60, r: 20 },
+    showlegend: false,
+    shapes: geneShapes,
+    annotations: geneAnnotations
+  };
+  var config = { responsive: true, displayModeBar: true, displaylogo: false };
+
+  if (!dndsInitialized) {
+    Plotly.newPlot('dnds-plot', traces, layout, config);
+    dndsInitialized = true;
+  } else {
+    Plotly.react('dnds-plot', traces, layout, config);
   }
 }
 
