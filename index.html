@@ -1244,7 +1244,12 @@ function parseVCF(text, fileName) {
 // ============================================================
 // AGGREGATION
 // ============================================================
-function variantKey(v) { return `${v.pos}_${v.ref}_${v.alt}`; }
+function variantKey(v) {
+  // Use original alleles for grouping so flipped variants aggregate with non-flipped
+  var r = v._origRef || v.ref;
+  var a = v._origAlt || v.alt;
+  return `${v.pos}_${r}_${a}`;
+}
 
 function aggregateVariants(filtered) {
   const map = new Map();
@@ -1397,7 +1402,7 @@ function applyFilters() {
     working = working.map(v => {
       if (v.af !== null && v.af >= 0.5) {
         // Swap ref/alt, invert AF, and flip the amino acid annotation
-        return { ...v, ref: v.alt, alt: v.ref, af: 1 - v.af, aaChange: flipAaChange(v.aaChange), _flippedByToggle: true };
+        return { ...v, ref: v.alt, alt: v.ref, af: 1 - v.af, aaChange: flipAaChange(v.aaChange), _flippedByToggle: true, _origRef: v.ref, _origAlt: v.alt };
       }
       return v;
     });
