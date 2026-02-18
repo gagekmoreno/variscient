@@ -1263,8 +1263,9 @@ function parseVCF(text, fileName) {
     if (line.startsWith('#') || line.trim() === '') continue;
     const chrom = line.split('\t')[0];
     if (chrom) {
-      // Try to extract accession pattern like NC_001498.1 from chrom name
-      const accMatch = chrom.match(/([A-Z]{1,2}_\d+\.\d+)/);
+      // Try to extract accession pattern from chrom name
+      // Matches RefSeq-style (NC_001498.1) and GenBank-style (PV809721.1)
+      const accMatch = chrom.match(/([A-Z]{1,2}_\d+\.\d+)/) || chrom.match(/^([A-Z]{1,4}\d{5,}\.\d+)/);
       if (accMatch) detectedRef = accMatch[1];
       else detectedRef = chrom; // use full chrom name as fallback
     }
